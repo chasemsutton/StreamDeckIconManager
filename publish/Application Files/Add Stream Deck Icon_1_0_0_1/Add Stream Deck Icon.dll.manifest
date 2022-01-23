@@ -1,0 +1,102 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<asmv1:assembly xsi:schemaLocation="urn:schemas-microsoft-com:asm.v1 assembly.adaptive.xsd" manifestVersion="1.0" xmlns:asmv1="urn:schemas-microsoft-com:asm.v1" xmlns="urn:schemas-microsoft-com:asm.v2" xmlns:asmv2="urn:schemas-microsoft-com:asm.v2" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:co.v1="urn:schemas-microsoft-com:clickonce.v1" xmlns:asmv3="urn:schemas-microsoft-com:asm.v3" xmlns:dsig="http://www.w3.org/2000/09/xmldsig#" xmlns:co.v2="urn:schemas-microsoft-com:clickonce.v2">
+  <asmv1:assemblyIdentity name="Add Stream Deck Icon.exe" version="1.0.0.1" publicKeyToken="743b2e958db43942" language="en-US" processorArchitecture="msil" type="win32" />
+  <description asmv2:iconFile="streamdeck_key.ico" xmlns="urn:schemas-microsoft-com:asm.v1" />
+  <application />
+  <entryPoint>
+    <assemblyIdentity name="Launcher" version="5.0.0.0" language="neutral" processorArchitecture="msil" />
+    <commandLine file="Launcher.exe" parameters="" />
+  </entryPoint>
+  <trustInfo>
+    <security>
+      <applicationRequestMinimum>
+        <PermissionSet Unrestricted="true" ID="Custom" SameSite="site" />
+        <defaultAssemblyRequest permissionSetReference="Custom" />
+      </applicationRequestMinimum>
+      <requestedPrivileges xmlns="urn:schemas-microsoft-com:asm.v3">
+        <!--
+          UAC Manifest Options
+          If you want to change the Windows User Account Control level replace the
+          requestedExecutionLevel node with one of the following.
+
+        <requestedExecutionLevel  level="asInvoker" uiAccess="false" />
+        <requestedExecutionLevel  level="requireAdministrator" uiAccess="false" />
+        <requestedExecutionLevel  level="highestAvailable" uiAccess="false" />
+
+         If you want to utilize File and Registry Virtualization for backward
+         compatibility then delete the requestedExecutionLevel node.
+    -->
+        <requestedExecutionLevel level="asInvoker" uiAccess="false" />
+      </requestedPrivileges>
+    </security>
+  </trustInfo>
+  <dependency>
+    <dependentOS>
+      <osVersionInfo>
+        <os majorVersion="5" minorVersion="1" buildNumber="2600" servicePackMajor="0" />
+      </osVersionInfo>
+    </dependentOS>
+  </dependency>
+  <dependency>
+    <dependentAssembly dependencyType="preRequisite" allowDelayedBinding="true">
+      <assemblyIdentity name="Microsoft.Windows.CommonLanguageRuntime" version="4.0.30319.0" />
+    </dependentAssembly>
+  </dependency>
+  <dependency>
+    <dependentAssembly dependencyType="install" allowDelayedBinding="true" codebase="Launcher.exe" size="15280">
+      <assemblyIdentity name="Launcher" version="5.0.0.0" language="neutral" processorArchitecture="msil" />
+      <hash>
+        <dsig:Transforms>
+          <dsig:Transform Algorithm="urn:schemas-microsoft-com:HashTransforms.Identity" />
+        </dsig:Transforms>
+        <dsig:DigestMethod Algorithm="http://www.w3.org/2000/09/xmldsig#sha256" />
+        <dsig:DigestValue>vlNRj3Aqli1Mhm8xv8oCau9tRytOtNMWrZIjzTq5czE=</dsig:DigestValue>
+      </hash>
+    </dependentAssembly>
+  </dependency>
+  <file name="Add Stream Deck Icon.deps.json" size="452">
+    <hash>
+      <dsig:Transforms>
+        <dsig:Transform Algorithm="urn:schemas-microsoft-com:HashTransforms.Identity" />
+      </dsig:Transforms>
+      <dsig:DigestMethod Algorithm="http://www.w3.org/2000/09/xmldsig#sha256" />
+      <dsig:DigestValue>J4nygIFQwi3Xg3m/W6FYJciCbfBTVoXLuhGg/1pqm1o=</dsig:DigestValue>
+    </hash>
+  </file>
+  <file name="Add Stream Deck Icon.dll" size="45488">
+    <hash>
+      <dsig:Transforms>
+        <dsig:Transform Algorithm="urn:schemas-microsoft-com:HashTransforms.Identity" />
+      </dsig:Transforms>
+      <dsig:DigestMethod Algorithm="http://www.w3.org/2000/09/xmldsig#sha256" />
+      <dsig:DigestValue>stINIVpDA/ATWwjZh7XkGWMh/tcgeTy9Hj9fIpSHzeE=</dsig:DigestValue>
+    </hash>
+  </file>
+  <file name="Add Stream Deck Icon.exe" size="154544">
+    <hash>
+      <dsig:Transforms>
+        <dsig:Transform Algorithm="urn:schemas-microsoft-com:HashTransforms.Identity" />
+      </dsig:Transforms>
+      <dsig:DigestMethod Algorithm="http://www.w3.org/2000/09/xmldsig#sha256" />
+      <dsig:DigestValue>m3fdYVt38f24PHp1KjBB2Q4u8fUk9eM8K9hGbp/jRw8=</dsig:DigestValue>
+    </hash>
+  </file>
+  <file name="Add Stream Deck Icon.runtimeconfig.json" size="372">
+    <hash>
+      <dsig:Transforms>
+        <dsig:Transform Algorithm="urn:schemas-microsoft-com:HashTransforms.Identity" />
+      </dsig:Transforms>
+      <dsig:DigestMethod Algorithm="http://www.w3.org/2000/09/xmldsig#sha256" />
+      <dsig:DigestValue>HsoPDHAHCqg7tgnkt0mybctECXhDJgMnJjlHIiJKCYo=</dsig:DigestValue>
+    </hash>
+  </file>
+  <file name="streamdeck_key.ico" size="4286">
+    <hash>
+      <dsig:Transforms>
+        <dsig:Transform Algorithm="urn:schemas-microsoft-com:HashTransforms.Identity" />
+      </dsig:Transforms>
+      <dsig:DigestMethod Algorithm="http://www.w3.org/2000/09/xmldsig#sha256" />
+      <dsig:DigestValue>obxAfxw9CiowxWGfth4rbBivc4I12kBYcTwEoHckDpM=</dsig:DigestValue>
+    </hash>
+  </file>
+<publisherIdentity name="CN=CHASEPC\chase" issuerKeyHash="2f4a067173f3e7d2151ce44888aa1d2d7f085094" /><Signature Id="StrongNameSignature" xmlns="http://www.w3.org/2000/09/xmldsig#"><SignedInfo><CanonicalizationMethod Algorithm="http://www.w3.org/2001/10/xml-exc-c14n#" /><SignatureMethod Algorithm="http://www.w3.org/2000/09/xmldsig#rsa-sha256" /><Reference URI=""><Transforms><Transform Algorithm="http://www.w3.org/2000/09/xmldsig#enveloped-signature" /><Transform Algorithm="http://www.w3.org/2001/10/xml-exc-c14n#" /></Transforms><DigestMethod Algorithm="http://www.w3.org/2000/09/xmldsig#sha256" /><DigestValue>rHP6/65kel3RqqvSBFmEKg0aP9FOLv987jpOncpDi6Q=</DigestValue></Reference></SignedInfo><SignatureValue>cln+Rfc7ok0QPnXK2hOfKnf6xfwdpURYFI/foP2ZV2bx7nZjmKDhWylCWNT/KqeLFHyfFSF4PYHgp7MTqW/8pAEA12xKFWSpd6SlxiThle/0AnNrtcyFGmD5u9Oy2Dc9xhZb2lb9nGBW3agiDfGfzdUk9wFOI8xkxurRMKcNAG4=</SignatureValue><KeyInfo Id="StrongNameKeyInfo"><KeyValue><RSAKeyValue><Modulus>0cmdYLQz7ytkEGv+o8KI8df1xGn7PhcPcv1hib7VO8aINcysMqOT8sT2QRp5Ddgh3qyjhQBpQZjBB5o3wi2ylPjicwOqUftd7yrtihcpt/JU3q9so326sHfIoB+1AY9aJ87Axa+yNcrN4Ize2WdqkZ2dUasuyH/m4cwhTH2Uy3U=</Modulus><Exponent>AQAB</Exponent></RSAKeyValue></KeyValue><msrel:RelData xmlns:msrel="http://schemas.microsoft.com/windows/rel/2005/reldata"><r:license xmlns:r="urn:mpeg:mpeg21:2003:01-REL-R-NS" xmlns:as="http://schemas.microsoft.com/windows/pki/2005/Authenticode"><r:grant><as:ManifestInformation Hash="a48b43ca9d4e3aee7cff2e4ed13f1a0d2a845904d2abaad15d7a64aefffa73ac" Description="" Url=""><as:assemblyIdentity name="Add Stream Deck Icon.exe" version="1.0.0.1" publicKeyToken="743b2e958db43942" language="en-US" processorArchitecture="msil" type="win32" /></as:ManifestInformation><as:SignedBy /><as:AuthenticodePublisher><as:X509SubjectName>CN=CHASEPC\chase</as:X509SubjectName></as:AuthenticodePublisher></r:grant><r:issuer><Signature Id="AuthenticodeSignature" xmlns="http://www.w3.org/2000/09/xmldsig#"><SignedInfo><CanonicalizationMethod Algorithm="http://www.w3.org/2001/10/xml-exc-c14n#" /><SignatureMethod Algorithm="http://www.w3.org/2000/09/xmldsig#rsa-sha256" /><Reference URI=""><Transforms><Transform Algorithm="http://www.w3.org/2000/09/xmldsig#enveloped-signature" /><Transform Algorithm="http://www.w3.org/2001/10/xml-exc-c14n#" /></Transforms><DigestMethod Algorithm="http://www.w3.org/2000/09/xmldsig#sha256" /><DigestValue>Qp+dTwB3VGGxoNNtjM7oJjFeXJVf+eaUp2BNsvlE4T4=</DigestValue></Reference></SignedInfo><SignatureValue>onzTjdbSkaTB93q73jZ92eauCLvsFuRxpaFxqSD9EbgzWbjgSyXB4cR9peH/Ys8YakDnywk7AHPQkNBLJY3CLpYl4e+S+dpkSNOwKu8ywwTm2AKrRfktz7MpKm2h9rW8+ngx4IZBp+AWx7BnRmRZRXCnqVIGu8jSrhqnWI31zTI=</SignatureValue><KeyInfo><KeyValue><RSAKeyValue><Modulus>0cmdYLQz7ytkEGv+o8KI8df1xGn7PhcPcv1hib7VO8aINcysMqOT8sT2QRp5Ddgh3qyjhQBpQZjBB5o3wi2ylPjicwOqUftd7yrtihcpt/JU3q9so326sHfIoB+1AY9aJ87Axa+yNcrN4Ize2WdqkZ2dUasuyH/m4cwhTH2Uy3U=</Modulus><Exponent>AQAB</Exponent></RSAKeyValue></KeyValue><X509Data><X509Certificate>MIIBzTCCATagAwIBAgIQb5g9OQAIaZRJ0Zjgo60yATANBgkqhkiG9w0BAQsFADAlMSMwIQYDVQQDHhoAQwBIAEEAUwBFAFAAQwBcAGMAaABhAHMAZTAeFw0yMjAxMjMwNjM3NDhaFw0yMzAxMjMxMjM3NDhaMCUxIzAhBgNVBAMeGgBDAEgAQQBTAEUAUABDAFwAYwBoAGEAcwBlMIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDRyZ1gtDPvK2QQa/6jwojx1/XEafs+Fw9y/WGJvtU7xog1zKwyo5PyxPZBGnkN2CHerKOFAGlBmMEHmjfCLbKU+OJzA6pR+13vKu2KFym38lTer2yjfbqwd8igH7UBj1onzsDFr7I1ys3gjN7ZZ2qRnZ1Rqy7If+bhzCFMfZTLdQIDAQABMA0GCSqGSIb3DQEBCwUAA4GBAI7axfiOHLc3GGKaJeRXJ7G8hip9PFk+fHEM8haui58hhMnNncF40bfMy7NXKN05UO/YFtlin+awIZNtOr0g0rYvG/PafKkm6MGnbK4SyQdyRqlYB/HqsP3kCBo5CaDjGN6PvHkWlXvB2W1t6n90gCjJs0dg7hM7M0HFAbfewP1d</X509Certificate></X509Data></KeyInfo></Signature></r:issuer></r:license></msrel:RelData></KeyInfo></Signature></asmv1:assembly>
