@@ -43,6 +43,9 @@
 #*.jpg   binary
 #*.png   binary
 #*.gif   binary
+*.manifest binary
+*.application binary
+*.deploy binary
 
 ###############################################################################
 # diff behavior for common document formats
