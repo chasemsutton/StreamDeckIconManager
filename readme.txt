@@ -1,0 +1,1 @@
+extract anywhere and run setup.exe in publish folder
