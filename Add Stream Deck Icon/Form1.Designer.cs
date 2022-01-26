@@ -28,12 +28,11 @@
         /// </summary>
         private void InitializeComponent()
         {
-            this.textBox1 = new System.Windows.Forms.TextBox();
+            System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(Form1));
             this.buttonBrowse = new System.Windows.Forms.Button();
             this.buttonAddIcons = new System.Windows.Forms.Button();
             this.pictureBox1 = new System.Windows.Forms.PictureBox();
             this.buttonOK = new System.Windows.Forms.Button();
-            this.textBox2 = new System.Windows.Forms.TextBox();
             this.textBox3 = new System.Windows.Forms.TextBox();
             this.label1 = new System.Windows.Forms.Label();
             this.label2 = new System.Windows.Forms.Label();
@@ -68,23 +67,11 @@
             this.buttonNewPackOK = new System.Windows.Forms.Button();
             this.label13 = new System.Windows.Forms.Label();
             this.buttonChangePackEmblem = new System.Windows.Forms.Button();
+            this.listView2 = new System.Windows.Forms.ListView();
+            this.panel1 = new System.Windows.Forms.Panel();
             ((System.ComponentModel.ISupportInitialize)(this.pictureBox1)).BeginInit();
             ((System.ComponentModel.ISupportInitialize)(this.pictureBox2)).BeginInit();
             this.SuspendLayout();
-            // 
-            // textBox1
-            // 
-            this.textBox1.AllowDrop = true;
-            this.textBox1.Location = new System.Drawing.Point(12, 30);
-            this.textBox1.Multiline = true;
-            this.textBox1.Name = "textBox1";
-            this.textBox1.ReadOnly = true;
-            this.textBox1.ScrollBars = System.Windows.Forms.ScrollBars.Both;
-            this.textBox1.Size = new System.Drawing.Size(707, 202);
-            this.textBox1.TabIndex = 0;
-            this.textBox1.WordWrap = false;
-            this.textBox1.DragDrop += new System.Windows.Forms.DragEventHandler(this.textBox1_DragDrop);
-            this.textBox1.DragOver += new System.Windows.Forms.DragEventHandler(this.textBox1_DragOver);
             // 
             // buttonBrowse
             // 
@@ -127,17 +114,10 @@
             this.buttonOK.Visible = false;
             this.buttonOK.Click += new System.EventHandler(this.buttonOK_Click);
             // 
-            // textBox2
-            // 
-            this.textBox2.Location = new System.Drawing.Point(159, 204);
-            this.textBox2.Name = "textBox2";
-            this.textBox2.ReadOnly = true;
-            this.textBox2.Size = new System.Drawing.Size(226, 23);
-            this.textBox2.TabIndex = 5;
-            this.textBox2.Visible = false;
-            // 
             // textBox3
             // 
+            this.textBox3.BackColor = System.Drawing.Color.Gray;
+            this.textBox3.ForeColor = System.Drawing.Color.White;
             this.textBox3.Location = new System.Drawing.Point(461, 34);
             this.textBox3.MaxLength = 32;
             this.textBox3.Name = "textBox3";
@@ -149,6 +129,7 @@
             // label1
             // 
             this.label1.AutoSize = true;
+            this.label1.ForeColor = System.Drawing.Color.White;
             this.label1.Location = new System.Drawing.Point(524, 12);
             this.label1.Name = "label1";
             this.label1.Size = new System.Drawing.Size(39, 15);
@@ -159,6 +140,7 @@
             // label2
             // 
             this.label2.AutoSize = true;
+            this.label2.ForeColor = System.Drawing.Color.White;
             this.label2.Location = new System.Drawing.Point(461, 75);
             this.label2.Name = "label2";
             this.label2.Size = new System.Drawing.Size(160, 15);
@@ -168,6 +150,8 @@
             // 
             // textBox4
             // 
+            this.textBox4.BackColor = System.Drawing.Color.Gray;
+            this.textBox4.ForeColor = System.Drawing.Color.White;
             this.textBox4.Location = new System.Drawing.Point(461, 108);
             this.textBox4.MaxLength = 200;
             this.textBox4.Multiline = true;
@@ -180,6 +164,7 @@
             // label3
             // 
             this.label3.AutoSize = true;
+            this.label3.ForeColor = System.Drawing.Color.White;
             this.label3.Location = new System.Drawing.Point(461, 90);
             this.label3.Name = "label3";
             this.label3.Size = new System.Drawing.Size(156, 15);
@@ -200,6 +185,7 @@
             // 
             // label4
             // 
+            this.label4.ForeColor = System.Drawing.Color.White;
             this.label4.Location = new System.Drawing.Point(698, 143);
             this.label4.Name = "label4";
             this.label4.Size = new System.Drawing.Size(123, 55);
@@ -211,6 +197,7 @@
             // 
             this.label5.AllowDrop = true;
             this.label5.AutoSize = true;
+            this.label5.BackColor = System.Drawing.Color.Gray;
             this.label5.Font = new System.Drawing.Font("Segoe UI", 15F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point);
             this.label5.ForeColor = System.Drawing.SystemColors.ButtonShadow;
             this.label5.Location = new System.Drawing.Point(258, 111);
@@ -235,6 +222,8 @@
             // 
             // listView1
             // 
+            this.listView1.BackColor = System.Drawing.Color.Gray;
+            this.listView1.ForeColor = System.Drawing.Color.White;
             this.listView1.Location = new System.Drawing.Point(12, 238);
             this.listView1.Name = "listView1";
             this.listView1.Size = new System.Drawing.Size(809, 304);
@@ -244,6 +233,8 @@
             // 
             // listBox1
             // 
+            this.listBox1.BackColor = System.Drawing.Color.Gray;
+            this.listBox1.ForeColor = System.Drawing.Color.White;
             this.listBox1.FormattingEnabled = true;
             this.listBox1.HorizontalScrollbar = true;
             this.listBox1.ItemHeight = 15;
@@ -317,6 +308,7 @@
             // 
             this.label6.AutoSize = true;
             this.label6.Font = new System.Drawing.Font("Segoe UI", 18F, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point);
+            this.label6.ForeColor = System.Drawing.Color.White;
             this.label6.Location = new System.Drawing.Point(461, 288);
             this.label6.Name = "label6";
             this.label6.Size = new System.Drawing.Size(306, 32);
@@ -327,6 +319,7 @@
             // label7
             // 
             this.label7.AutoSize = true;
+            this.label7.ForeColor = System.Drawing.Color.White;
             this.label7.Location = new System.Drawing.Point(595, 335);
             this.label7.Name = "label7";
             this.label7.Size = new System.Drawing.Size(38, 15);
@@ -337,6 +330,7 @@
             // label8
             // 
             this.label8.AutoSize = true;
+            this.label8.ForeColor = System.Drawing.Color.White;
             this.label8.Location = new System.Drawing.Point(526, 370);
             this.label8.Name = "label8";
             this.label8.Size = new System.Drawing.Size(176, 15);
@@ -346,6 +340,8 @@
             // 
             // textBox5
             // 
+            this.textBox5.BackColor = System.Drawing.Color.Gray;
+            this.textBox5.ForeColor = System.Drawing.Color.White;
             this.textBox5.Location = new System.Drawing.Point(487, 402);
             this.textBox5.Name = "textBox5";
             this.textBox5.Size = new System.Drawing.Size(255, 23);
@@ -378,6 +374,7 @@
             // 
             this.label9.AutoSize = true;
             this.label9.Font = new System.Drawing.Font("Segoe UI", 18F, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point);
+            this.label9.ForeColor = System.Drawing.Color.White;
             this.label9.Location = new System.Drawing.Point(102, 280);
             this.label9.Name = "label9";
             this.label9.Size = new System.Drawing.Size(181, 32);
@@ -388,6 +385,8 @@
             // 
             // textBox6
             // 
+            this.textBox6.BackColor = System.Drawing.Color.Gray;
+            this.textBox6.ForeColor = System.Drawing.Color.White;
             this.textBox6.Location = new System.Drawing.Point(142, 341);
             this.textBox6.MaxLength = 50;
             this.textBox6.Name = "textBox6";
@@ -398,6 +397,8 @@
             // 
             // textBox7
             // 
+            this.textBox7.BackColor = System.Drawing.Color.Gray;
+            this.textBox7.ForeColor = System.Drawing.Color.White;
             this.textBox7.Location = new System.Drawing.Point(142, 402);
             this.textBox7.Name = "textBox7";
             this.textBox7.Size = new System.Drawing.Size(100, 23);
@@ -407,6 +408,8 @@
             // 
             // textBox8
             // 
+            this.textBox8.BackColor = System.Drawing.Color.Gray;
+            this.textBox8.ForeColor = System.Drawing.Color.White;
             this.textBox8.Location = new System.Drawing.Point(142, 467);
             this.textBox8.Name = "textBox8";
             this.textBox8.Size = new System.Drawing.Size(100, 23);
@@ -417,6 +420,7 @@
             // label10
             // 
             this.label10.AutoSize = true;
+            this.label10.ForeColor = System.Drawing.Color.White;
             this.label10.Location = new System.Drawing.Point(159, 324);
             this.label10.Name = "label10";
             this.label10.Size = new System.Drawing.Size(67, 15);
@@ -428,6 +432,7 @@
             // label11
             // 
             this.label11.AutoSize = true;
+            this.label11.ForeColor = System.Drawing.Color.White;
             this.label11.Location = new System.Drawing.Point(95, 382);
             this.label11.Name = "label11";
             this.label11.Size = new System.Drawing.Size(195, 15);
@@ -439,6 +444,7 @@
             // label12
             // 
             this.label12.AutoSize = true;
+            this.label12.ForeColor = System.Drawing.Color.White;
             this.label12.Location = new System.Drawing.Point(106, 449);
             this.label12.Name = "label12";
             this.label12.Size = new System.Drawing.Size(172, 15);
@@ -473,6 +479,7 @@
             // 
             this.label13.AutoSize = true;
             this.label13.Font = new System.Drawing.Font("Segoe UI", 12F, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point);
+            this.label13.ForeColor = System.Drawing.Color.White;
             this.label13.Location = new System.Drawing.Point(931, 18);
             this.label13.Name = "label13";
             this.label13.Size = new System.Drawing.Size(174, 21);
@@ -489,11 +496,36 @@
             this.buttonChangePackEmblem.UseVisualStyleBackColor = true;
             this.buttonChangePackEmblem.Click += new System.EventHandler(this.buttonChangePackEmblem_Click);
             // 
+            // listView2
+            // 
+            this.listView2.AllowDrop = true;
+            this.listView2.BackColor = System.Drawing.Color.Gray;
+            this.listView2.ForeColor = System.Drawing.Color.White;
+            this.listView2.Location = new System.Drawing.Point(12, 29);
+            this.listView2.MultiSelect = false;
+            this.listView2.Name = "listView2";
+            this.listView2.Size = new System.Drawing.Size(707, 203);
+            this.listView2.TabIndex = 41;
+            this.listView2.UseCompatibleStateImageBehavior = false;
+            this.listView2.DragDrop += new System.Windows.Forms.DragEventHandler(this.textBox1_DragDrop);
+            this.listView2.DragOver += new System.Windows.Forms.DragEventHandler(this.textBox1_DragOver);
+            // 
+            // panel1
+            // 
+            this.panel1.BackColor = System.Drawing.Color.White;
+            this.panel1.Dock = System.Windows.Forms.DockStyle.Top;
+            this.panel1.Location = new System.Drawing.Point(0, 0);
+            this.panel1.Name = "panel1";
+            this.panel1.Size = new System.Drawing.Size(1139, 1);
+            this.panel1.TabIndex = 42;
+            // 
             // Form1
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(7F, 15F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(1141, 607);
+            this.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(64)))), ((int)(((byte)(64)))), ((int)(((byte)(64)))));
+            this.ClientSize = new System.Drawing.Size(1139, 552);
+            this.Controls.Add(this.panel1);
             this.Controls.Add(this.buttonChangePackEmblem);
             this.Controls.Add(this.label13);
             this.Controls.Add(this.buttonNewPackOK);
@@ -527,13 +559,15 @@
             this.Controls.Add(this.label2);
             this.Controls.Add(this.label1);
             this.Controls.Add(this.textBox3);
-            this.Controls.Add(this.textBox2);
             this.Controls.Add(this.buttonOK);
             this.Controls.Add(this.pictureBox1);
             this.Controls.Add(this.buttonAddIcons);
             this.Controls.Add(this.buttonBrowse);
             this.Controls.Add(this.label5);
-            this.Controls.Add(this.textBox1);
+            this.Controls.Add(this.listView2);
+            this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedSingle;
+            this.Icon = ((System.Drawing.Icon)(resources.GetObject("$this.Icon")));
+            this.MaximizeBox = false;
             this.Name = "Form1";
             this.Text = "Stream Deck Icon Manager";
             this.FormClosing += new System.Windows.Forms.FormClosingEventHandler(this.Form1_FormClosing);
@@ -545,13 +579,10 @@
         }
 
         #endregion
-
-        private TextBox textBox1;
         private Button buttonBrowse;
         private Button buttonAddIcons;
         private PictureBox pictureBox1;
         private Button buttonOK;
-        private TextBox textBox2;
         private TextBox textBox3;
         private Label label1;
         private Label label2;
@@ -586,5 +617,7 @@
         private Button buttonNewPackOK;
         private Label label13;
         private Button buttonChangePackEmblem;
+        private ListView listView2;
+        private Panel panel1;
     }
 }

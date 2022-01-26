@@ -16,23 +16,23 @@ namespace Add_Stream_Deck_Icon
         public bool changesMade = false;
         Manifest importWaiting;
         string importWaitingTempPath;
+        public List<Image> imagesToAdd = new List<Image>();
         public Form1()
         {
             InitializeComponent();
             string[] dirs = Directory.GetDirectories(streamDeckPacksPath);
             foreach (string dir in dirs)
             {
-                if (dir.Substring(dir.LastIndexOf('\\')+1).StartsWith("zzcustomuser"))
+                if (dir.Substring(dir.LastIndexOf('\\') + 1).StartsWith("zzcustomuser"))
                 {
                     Manifest testMani = new Manifest(dir);
                     allPacks.Add(testMani);
                 }
             }
             UpdateListBoxText();
-            //CheckForCustomIconFolder();
             //ListExistingIcons();
         }
-        
+
         private void buttonBrowse_Click(object sender, EventArgs e)
         {
             using (OpenFileDialog dialog = new OpenFileDialog())
@@ -41,7 +41,11 @@ namespace Add_Stream_Deck_Icon
                 dialog.Filter = "PNG files (*.png)|*.png";
                 if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
                 {
-                    textBox1.Text = String.Join("\r\n", dialog.FileNames);
+                    foreach (string fileName in dialog.FileNames)
+                    {
+                        imagesToAdd.Add(Image.FromFile(fileName));
+                    }
+                    ListNewIcons();
                     label5.Visible = false;
                 }
             }
@@ -49,55 +53,59 @@ namespace Add_Stream_Deck_Icon
 
         private void textBox1_DragOver(object sender, DragEventArgs e)
         {
-                if (e.Data.GetDataPresent(DataFormats.FileDrop))
-                    e.Effect = DragDropEffects.Link;
-                else
-                    e.Effect = DragDropEffects.None;
+            if (e.Data.GetDataPresent(DataFormats.FileDrop))
+                e.Effect = DragDropEffects.Link;
+            else
+                e.Effect = DragDropEffects.None;
         }
 
         private void textBox1_DragDrop(object sender, DragEventArgs e)
         {
             var tempFiles = (string[])e.Data.GetData(DataFormats.FileDrop);
-
+            List<string> addedFiles = new List<string>();
             foreach (var file in tempFiles)
             {
                 if (System.IO.Path.GetExtension(file).Equals(".png", StringComparison.InvariantCultureIgnoreCase))
                 {
-                    if(files != null)
-                    {
-                        if(!files.Contains(file)) files.Add(file);
-                    }
-                    else files.Add(file);
+                    addedFiles.Add(file);
                 }
                 else
                 {
                     MessageBox.Show("Must Be PNG File Format");
                 }
             } // get all files droppeds  
-            if (files != null && files.Any())
+            if (addedFiles != null && addedFiles.Any())
             {
+                foreach (string fileName in addedFiles)
+                {
+                    imagesToAdd.Add(Image.FromFile(fileName));
+                }
+                ListNewIcons();
                 label5.Visible = false;
-                textBox1.Text = String.Join("\r\n", files); 
             }
         }
 
         private void buttonAddIcons_Click(object sender, EventArgs e)
         {
-            if (files.Any())
+            if (imagesToAdd.Count > 0)
             {
-                ToggleVisibility();
-                AskForIconInfo(files[0]);
+                if (allPacks.Any())
+                {
+                    ToggleVisibility();
+                    AskForIconInfo(imagesToAdd[0]);
+                }
+                else { MessageBox.Show("Create a pack first"); }
             }
             else MessageBox.Show("You don't have any files selected.", "Error");
         }
 
         private void buttonOK_Click(object sender, EventArgs e)
         {
-            GetIconInfo(files[0]);
-            files.RemoveAt(0);
-            if (files.Count > 0 && files[0] != null)
+            GetIconInfo(imagesToAdd[0]);
+            imagesToAdd.RemoveAt(0);
+            if (imagesToAdd.Count > 0 && imagesToAdd[0] != null)
             {
-                AskForIconInfo(files[0]);
+                AskForIconInfo(imagesToAdd[0]);
                 textBox3.Focus();
             }
             else
@@ -105,17 +113,17 @@ namespace Add_Stream_Deck_Icon
                 ToggleVisibility();
                 StartOver();
             }
-            
+
         }
 
         private void buttonSkip_Click(object sender, EventArgs e)
         {
             textBox3.Clear();
             textBox4.Clear();
-            while(files.Count > 0 && files[0] != null)
+            while (imagesToAdd.Count > 0 && imagesToAdd[0] != null)
             {
-                GetIconInfo(files[0]);
-                files.RemoveAt(0);
+                GetIconInfo(imagesToAdd[0]);
+                imagesToAdd.RemoveAt(0);
             }
             ToggleVisibility();
             StartOver();
@@ -141,17 +149,15 @@ namespace Add_Stream_Deck_Icon
 
         }
 
-        private void AskForIconInfo(string file)
+        private void AskForIconInfo(Image picture)
         {
-            Image image = Image.FromFile(file);
-            textBox2.Text = Path.GetFileName(file);
-            pictureBox1.Image = image;
+            pictureBox1.Image = picture;
             textBox3.Clear();
             textBox4.Clear();
             textBox3.Focus();
         }
 
-        private void GetIconInfo(string file)
+        private void GetIconInfo(Image picture)
         {
             string[] tags = { "custom" };
             string name = "Custom Icon " + (allPacks[listBox1.SelectedIndex].HighestIconNumber + 1).ToString();
@@ -159,15 +165,15 @@ namespace Add_Stream_Deck_Icon
             {
                 name = textBox3.Text;
             }
-            if(!String.IsNullOrEmpty(textBox4.Text))
+            if (!String.IsNullOrEmpty(textBox4.Text))
             {
                 tags = ("custom," + textBox4.Text).Split(',');
             }
-            for(int i = 0; i < tags.Length; i++)
+            for (int i = 0; i < tags.Length; i++)
             {
                 tags[i].Trim();
             }
-            allPacks[listBox1.SelectedIndex].AddIcon(name, tags, file);
+            allPacks[listBox1.SelectedIndex].AddIcon(name, tags, picture);
             changesMade = true;
             textBox3.Clear();
             textBox4.Clear();
@@ -175,8 +181,7 @@ namespace Add_Stream_Deck_Icon
 
         private void ToggleVisibility()
         {
-            textBox1.Visible = !textBox1.Visible;
-            textBox2.Visible = !textBox2.Visible;
+            listView2.Visible = !listView2.Visible;
             textBox3.Visible = !textBox3.Visible;
             textBox4.Visible = !textBox4.Visible;
             buttonBrowse.Visible = !buttonBrowse.Visible;
@@ -193,15 +198,13 @@ namespace Add_Stream_Deck_Icon
 
         public void StartOver()
         {
-            files = new List<string>();
-            textBox1.Clear();
-            textBox2.Clear();
+            imagesToAdd = new List<Image>();
+            listView2.Items.Clear();
             textBox3.Clear();
             textBox4.Clear();
             label5.Visible = true;
             if (pictureBox1.Image != null)
             {
-                pictureBox1.Image.Dispose();
                 pictureBox1.Image = null;
             }
             ListExistingIcons();
@@ -214,7 +217,7 @@ namespace Add_Stream_Deck_Icon
             {
                 listBox1.Items.Add(manifest.Name);
             }
-            if(listBox1.Items.Count > 0) listBox1.SelectedIndex = 0;
+            if (listBox1.Items.Count > 0) listBox1.SelectedIndex = 0;
         }
         public void ListExistingIcons()
         {
@@ -232,11 +235,32 @@ namespace Add_Stream_Deck_Icon
                     ImageIndex = i,
                     Text = icon.Name,
                     Tag = icon.Tags
-                }) ;
+                });
                 i++;
             }
             listView1.LargeImageList = imageList;
             pictureBox2.Image = allPacks[listBox1.SelectedIndex].Emblem;
+        }
+        public void ListNewIcons()
+        {
+            listView2.Items.Clear();
+            int i = 0;
+            listView2.View = View.LargeIcon;
+            ImageList imageList = new ImageList();
+            imageList.ImageSize = new Size(60, 60);
+            foreach (Image icon in imagesToAdd)
+            {
+                imageList.Images.Add(icon);
+
+                listView2.Items.Add(new ListViewItem
+                {
+                    ImageIndex = i,
+                    Text = "Import",
+                    Tag = "Import"
+                });
+                i++;
+            }
+            listView2.LargeImageList = imageList;
         }
 
         private void buttonSave_Click(object sender, EventArgs e)
@@ -582,6 +606,11 @@ namespace Add_Stream_Deck_Icon
                 }
             }
         }
+
+        private void buttonClose_Click(object sender, EventArgs e)
+        {
+            Close();
+        }
     }
 
     class Icon
@@ -747,11 +776,11 @@ namespace Add_Stream_Deck_Icon
             else Emblem = Resources.imgIcon1;
         }
 
-        public void AddIcon(string name, string[] tags,string imageFilePath)
+        public void AddIcon(string name, string[] tags,Image picture)
         {
             
             string path = "Custom Icon-" + (HighestIconNumber + 1).ToString() + ".png";
-            Icons.Add(new Icon(HighestIconNumber + 1, path, name, tags, Image.FromFile(imageFilePath)));
+            Icons.Add(new Icon(HighestIconNumber + 1, path, name, tags, picture));
             HighestIconNumber++;
         }
         public void RemoveIcon(int index)
