@@ -91,7 +91,7 @@ namespace Add_Stream_Deck_Icon
             {
                 if (allPacks.Any())
                 {
-                    ToggleVisibility();
+                    AddIconsVisible(true);
                     AskForIconInfo(imagesToAdd[0]);
                 }
                 else { MessageBox.Show("Create a pack first"); }
@@ -110,7 +110,7 @@ namespace Add_Stream_Deck_Icon
             }
             else
             {
-                ToggleVisibility();
+                AddIconsVisible(false);
                 StartOver();
             }
 
@@ -125,7 +125,7 @@ namespace Add_Stream_Deck_Icon
                 GetIconInfo(imagesToAdd[0]);
                 imagesToAdd.RemoveAt(0);
             }
-            ToggleVisibility();
+            AddIconsVisible(false);
             StartOver();
         }
 
@@ -133,9 +133,16 @@ namespace Add_Stream_Deck_Icon
         {
             if (MessageBox.Show("Are you sure you want to DELETE ALL ICONS from pack:" + allPacks[listBox1.SelectedIndex].Name, "WARNING", MessageBoxButtons.YesNoCancel) == DialogResult.Yes)
             {
-                changesMade = true;
-                allPacks[listBox1.SelectedIndex].Icons.Clear();
-                ListExistingIcons();
+                if (listBox1.SelectedIndex != -1)
+                {
+                    changesMade = true;
+                    foreach (Icon icon in allPacks[listBox1.SelectedIndex].Icons)
+                    {
+                        icon.Picture.Dispose();
+                    }
+                    allPacks[listBox1.SelectedIndex].Icons.Clear();
+                    ListExistingIcons();
+                }
             }
         }
 
@@ -179,21 +186,20 @@ namespace Add_Stream_Deck_Icon
             textBox4.Clear();
         }
 
-        private void ToggleVisibility()
+        private void AddIconsVisible(bool enabled)
         {
-            listView2.Visible = !listView2.Visible;
-            textBox3.Visible = !textBox3.Visible;
-            textBox4.Visible = !textBox4.Visible;
-            buttonBrowse.Visible = !buttonBrowse.Visible;
-            buttonAddIcons.Visible = !buttonAddIcons.Visible;
-            buttonOK.Visible = !buttonOK.Visible;
-            buttonSkip.Visible = !buttonSkip.Visible;
-            buttonDeleteAll.Visible = !buttonDeleteAll.Visible;
-            label1.Visible = !label1.Visible;
-            label2.Visible = !label2.Visible;
-            label3.Visible = !label3.Visible;
-            label4.Visible = !label4.Visible;
-            pictureBox1.Visible = !pictureBox1.Visible;
+            listView2.Visible = !enabled;
+            textBox3.Visible = enabled;
+            textBox4.Visible = enabled;
+            buttonBrowse.Visible = !enabled;
+            buttonAddIcons.Visible = !enabled;
+            buttonOK.Visible = enabled;
+            buttonSkip.Visible = enabled;
+            label1.Visible = enabled;
+            label2.Visible = enabled;
+            label3.Visible = enabled;
+            pictureBox1.Visible = enabled;
+            DefaultControlsEnabled(!enabled);
         }
 
         public void StartOver()
@@ -213,11 +219,14 @@ namespace Add_Stream_Deck_Icon
         private void UpdateListBoxText()
         {
             listBox1.Items.Clear();
-            foreach (Manifest manifest in allPacks)
+            if (allPacks.Any())
             {
-                listBox1.Items.Add(manifest.Name);
+                foreach (Manifest manifest in allPacks)
+                {
+                    listBox1.Items.Add(manifest.Name);
+                }
+                if (listBox1.Items.Count > 0) listBox1.SelectedIndex = 0;
             }
-            if (listBox1.Items.Count > 0) listBox1.SelectedIndex = 0;
         }
         public void ListExistingIcons()
         {
@@ -265,16 +274,31 @@ namespace Add_Stream_Deck_Icon
 
         private void buttonSave_Click(object sender, EventArgs e)
         {
-            foreach(Manifest manifest in allPacks)
+            if (allPacks.Any())
             {
-                manifest.SaveManifest();
+                foreach (Manifest manifest in allPacks)
+                {
+                    manifest.SaveManifest();
+                }
             }
-            Environment.Exit(0);
+            MessageBox.Show("Done. Restart Stream Deck for changes to take effect!");
+            changesMade = false;
+            Close();
         }
 
         private void Form1_FormClosing(object sender, FormClosingEventArgs e)
         {
-            if (changesMade)
+            if(importWaiting != null) importWaiting.DisposeAllImages();
+            string[] dirs = Directory.GetDirectories(Path.GetTempPath());
+            foreach (string dir in dirs)
+            {
+                if (dir.Contains(".sdIconPack"))
+                {
+                    DirectoryInfo di = new DirectoryInfo(dir);
+                    di.Delete(true);
+                }
+            }
+                if (changesMade)
             {
                 if (MessageBox.Show("Would you like changes saved to stream deck before exiting?", "WARNING", MessageBoxButtons.YesNo) == DialogResult.Yes)
                 {
@@ -296,15 +320,19 @@ namespace Add_Stream_Deck_Icon
 
         private void buttonDeletePack_Click(object sender, EventArgs e)
         {
-            if (MessageBox.Show("Are you sure you want to delete the entire icon pack named:" + allPacks[listBox1.SelectedIndex].Name + "?", "WARNING", MessageBoxButtons.YesNo) == DialogResult.Yes)
+            if (allPacks.Any())
             {
-                changesMade = true;
-                DirectoryInfo di = new DirectoryInfo(allPacks[listBox1.SelectedIndex].IconPackPath);
-                allPacks[listBox1.SelectedIndex].DisposeAllImages();
-                di.Delete(true);
-                allPacks.RemoveAt(listBox1.SelectedIndex);
-                UpdateListBoxText();
+                if (MessageBox.Show("Are you sure you want to delete the entire icon pack named:" + allPacks[listBox1.SelectedIndex].Name + "?", "WARNING", MessageBoxButtons.YesNo) == DialogResult.Yes)
+                {
+                    changesMade = true;
+                    DirectoryInfo di = new DirectoryInfo(allPacks[listBox1.SelectedIndex].IconPackPath);
+                    allPacks[listBox1.SelectedIndex].DisposeAllImages();
+                    di.Delete(true);
+                    allPacks.RemoveAt(listBox1.SelectedIndex);
+                    UpdateListBoxText();
+                }
             }
+            else { MessageBox.Show("Create a pack first!"); }
         }
 
         private void buttonImport_Click(object sender, EventArgs e)
@@ -344,8 +372,10 @@ namespace Add_Stream_Deck_Icon
                         Manifest tempMani = new Manifest(importWaiting.IconPackPath);
                         allPacks.Add(tempMani);
                         importWaiting.DisposeAllImages();
+                        importWaiting = null;
                         DirectoryInfo di = new DirectoryInfo(importWaitingTempPath);
                         di.Delete(true);
+                        importWaitingTempPath = null;
                         UpdateListBoxText();
 
                     }
@@ -378,8 +408,10 @@ namespace Add_Stream_Deck_Icon
                 Manifest tempMani = new Manifest(importWaiting.IconPackPath);
                 allPacks.Add(tempMani);
                 importWaiting.DisposeAllImages();
+                importWaiting = null;
                 DirectoryInfo di = new DirectoryInfo(importWaitingTempPath);
                 di.Delete(true);
+                importWaitingTempPath = null;
                 UpdateListBoxText();
 
             }
@@ -387,25 +419,32 @@ namespace Add_Stream_Deck_Icon
 
         private void buttonExport_Click(object sender, EventArgs e)
         {
-            SaveFileDialog saveFileDialog1 = new SaveFileDialog();
-            saveFileDialog1.Filter = "zip archive (*.zip)|*.zip";
-            saveFileDialog1.RestoreDirectory = true;
-
-            if (saveFileDialog1.ShowDialog() == DialogResult.OK)
+            if (allPacks.Any())
             {
-                    ZipFile.CreateFromDirectory(allPacks[listBox1.SelectedIndex].IconPackPath, saveFileDialog1.FileName,CompressionLevel.Optimal,true);
-            }
+                SaveFileDialog saveFileDialog1 = new SaveFileDialog();
+                saveFileDialog1.Filter = "zip archive (*.zip)|*.zip";
+                saveFileDialog1.RestoreDirectory = true;
+
+                if (saveFileDialog1.ShowDialog() == DialogResult.OK)
+                {
+                    ZipFile.CreateFromDirectory(allPacks[listBox1.SelectedIndex].IconPackPath, saveFileDialog1.FileName, CompressionLevel.Optimal, true);
+                }
+            } else { MessageBox.Show("Create a pack first!"); }
         }
 
         private void buttonDeleteSelectedIcons_Click(object sender, EventArgs e)
         {
-            changesMade = true;
-            var selected = listView1.SelectedIndices;
-            foreach (var i in selected)
+            if (allPacks.Any())
             {
-                allPacks[listBox1.SelectedIndex].RemoveIcon(Int32.Parse(i.ToString()));
+                changesMade = true;
+                var selected = listView1.SelectedIndices;
+                foreach (var i in selected)
+                {
+                    allPacks[listBox1.SelectedIndex].RemoveIcon(Int32.Parse(i.ToString()));
+                }
+                ListExistingIcons();
             }
-            ListExistingIcons();
+            else { MessageBox.Show("Create a pack first!"); }
         }
 
         private void buttonbadNameOK_Click(object sender, EventArgs e)
@@ -596,20 +635,27 @@ namespace Add_Stream_Deck_Icon
         {
             using (OpenFileDialog dialog = new OpenFileDialog())
             {
-                dialog.Multiselect = false;
-                dialog.Filter = "PNG files (*.png)|*.png";
-                if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
+                if (allPacks.Any())
                 {
-                    allPacks[listBox1.SelectedIndex].Emblem = Image.FromFile(dialog.FileName);
-                    changesMade = true;
-                    ListExistingIcons();
+                    dialog.Multiselect = false;
+                    dialog.Filter = "PNG files (*.png)|*.png";
+                    if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
+                    {
+                        allPacks[listBox1.SelectedIndex].Emblem = Image.FromFile(dialog.FileName);
+                        changesMade = true;
+                        ListExistingIcons();
+                    }
                 }
+                else { MessageBox.Show("Create a pack first!"); }
             }
         }
 
-        private void buttonClose_Click(object sender, EventArgs e)
+        private void buttonBrowse_MouseEnter(object sender, EventArgs e)
         {
-            Close();
+        }
+
+        private void buttonBrowse_MouseLeave(object sender, EventArgs e)
+        {
         }
     }
 
@@ -785,6 +831,7 @@ namespace Add_Stream_Deck_Icon
         }
         public void RemoveIcon(int index)
         {
+            Icons[index].Picture.Dispose();
             Icons.RemoveAt(index);
         }
         private string GetIconDataPiece(string iconDataRaw, string targetDataPiece)

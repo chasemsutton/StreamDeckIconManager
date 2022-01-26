@@ -7,12 +7,12 @@
     <Nullable>enable</Nullable>
     <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
-    <ApplicationIcon>streamdeck_key.ico</ApplicationIcon>
+    <ApplicationIcon>StreamDeckIconManagerLogo.ico</ApplicationIcon>
     <StartupObject>Add_Stream_Deck_Icon.Program</StartupObject>
   </PropertyGroup>
 
   <ItemGroup>
-    <Content Include="streamdeck_key.ico" />
+    <Content Include="StreamDeckIconManagerLogo.ico" />
   </ItemGroup>
 
   <ItemGroup>
