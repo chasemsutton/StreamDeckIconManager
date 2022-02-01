@@ -67,6 +67,8 @@
             this.label13 = new System.Windows.Forms.Label();
             this.buttonChangePackEmblem = new System.Windows.Forms.Button();
             this.listView2 = new System.Windows.Forms.ListView();
+            this.buttonChangePackDetails = new System.Windows.Forms.Button();
+            this.buttonChangeIconName = new System.Windows.Forms.Button();
             ((System.ComponentModel.ISupportInitialize)(this.pictureBox1)).BeginInit();
             ((System.ComponentModel.ISupportInitialize)(this.pictureBox2)).BeginInit();
             this.SuspendLayout();
@@ -80,12 +82,10 @@
             this.buttonBrowse.Text = "browse";
             this.buttonBrowse.UseVisualStyleBackColor = true;
             this.buttonBrowse.Click += new System.EventHandler(this.buttonBrowse_Click);
-            this.buttonBrowse.MouseEnter += new System.EventHandler(this.buttonBrowse_MouseEnter);
-            this.buttonBrowse.MouseLeave += new System.EventHandler(this.buttonBrowse_MouseLeave);
             // 
             // buttonAddIcons
             // 
-            this.buttonAddIcons.Location = new System.Drawing.Point(577, 183);
+            this.buttonAddIcons.Location = new System.Drawing.Point(577, 182);
             this.buttonAddIcons.Name = "buttonAddIcons";
             this.buttonAddIcons.Size = new System.Drawing.Size(96, 50);
             this.buttonAddIcons.TabIndex = 2;
@@ -192,11 +192,11 @@
             this.label5.BackColor = System.Drawing.Color.DimGray;
             this.label5.Font = new System.Drawing.Font("Segoe UI", 15F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point);
             this.label5.ForeColor = System.Drawing.SystemColors.ButtonShadow;
-            this.label5.Location = new System.Drawing.Point(184, 117);
+            this.label5.Location = new System.Drawing.Point(154, 117);
             this.label5.Name = "label5";
-            this.label5.Size = new System.Drawing.Size(214, 28);
+            this.label5.Size = new System.Drawing.Size(275, 28);
             this.label5.TabIndex = 14;
-            this.label5.Text = "Drag && Drop PNG Files";
+            this.label5.Text = "Drag && Drop PNG or JPG Files";
             this.label5.DragDrop += new System.Windows.Forms.DragEventHandler(this.textBox1_DragDrop);
             this.label5.DragOver += new System.Windows.Forms.DragEventHandler(this.textBox1_DragOver);
             // 
@@ -204,11 +204,11 @@
             // 
             this.buttonDeleteAll.BackColor = System.Drawing.SystemColors.Control;
             this.buttonDeleteAll.Font = new System.Drawing.Font("Segoe UI", 9F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point);
-            this.buttonDeleteAll.Location = new System.Drawing.Point(681, 299);
+            this.buttonDeleteAll.Location = new System.Drawing.Point(681, 391);
             this.buttonDeleteAll.Name = "buttonDeleteAll";
             this.buttonDeleteAll.Size = new System.Drawing.Size(99, 38);
             this.buttonDeleteAll.TabIndex = 15;
-            this.buttonDeleteAll.Text = "Clear Icons From Pack";
+            this.buttonDeleteAll.Text = "Delete All Icons From Pack";
             this.buttonDeleteAll.UseVisualStyleBackColor = true;
             this.buttonDeleteAll.Click += new System.EventHandler(this.buttonDeleteAll_Click);
             // 
@@ -221,7 +221,6 @@
             this.listView1.Size = new System.Drawing.Size(661, 392);
             this.listView1.TabIndex = 16;
             this.listView1.UseCompatibleStateImageBehavior = false;
-            this.listView1.SelectedIndexChanged += new System.EventHandler(this.listView1_SelectedIndexChanged);
             // 
             // listBox1
             // 
@@ -238,7 +237,7 @@
             // 
             // buttonSave
             // 
-            this.buttonSave.Location = new System.Drawing.Point(681, 589);
+            this.buttonSave.Location = new System.Drawing.Point(681, 591);
             this.buttonSave.Name = "buttonSave";
             this.buttonSave.Size = new System.Drawing.Size(99, 38);
             this.buttonSave.TabIndex = 18;
@@ -248,17 +247,17 @@
             // 
             // buttonDeleteSelectedIcons
             // 
-            this.buttonDeleteSelectedIcons.Location = new System.Drawing.Point(679, 238);
+            this.buttonDeleteSelectedIcons.Location = new System.Drawing.Point(681, 338);
             this.buttonDeleteSelectedIcons.Name = "buttonDeleteSelectedIcons";
-            this.buttonDeleteSelectedIcons.Size = new System.Drawing.Size(101, 41);
+            this.buttonDeleteSelectedIcons.Size = new System.Drawing.Size(99, 41);
             this.buttonDeleteSelectedIcons.TabIndex = 19;
-            this.buttonDeleteSelectedIcons.Text = "Delete Selected Icon(s)";
+            this.buttonDeleteSelectedIcons.Text = "Delete Icon(s)";
             this.buttonDeleteSelectedIcons.UseVisualStyleBackColor = true;
             this.buttonDeleteSelectedIcons.Click += new System.EventHandler(this.buttonDeleteSelectedIcons_Click);
             // 
             // buttonImport
             // 
-            this.buttonImport.Location = new System.Drawing.Point(681, 415);
+            this.buttonImport.Location = new System.Drawing.Point(681, 491);
             this.buttonImport.Name = "buttonImport";
             this.buttonImport.Size = new System.Drawing.Size(99, 38);
             this.buttonImport.TabIndex = 20;
@@ -268,17 +267,17 @@
             // 
             // buttonExport
             // 
-            this.buttonExport.Location = new System.Drawing.Point(681, 473);
+            this.buttonExport.Location = new System.Drawing.Point(681, 541);
             this.buttonExport.Name = "buttonExport";
             this.buttonExport.Size = new System.Drawing.Size(99, 38);
             this.buttonExport.TabIndex = 21;
-            this.buttonExport.Text = "Export Selected Pack";
+            this.buttonExport.Text = "Export Pack";
             this.buttonExport.UseVisualStyleBackColor = true;
             this.buttonExport.Click += new System.EventHandler(this.buttonExport_Click);
             // 
             // buttonNewPack
             // 
-            this.buttonNewPack.Location = new System.Drawing.Point(681, 531);
+            this.buttonNewPack.Location = new System.Drawing.Point(681, 238);
             this.buttonNewPack.Name = "buttonNewPack";
             this.buttonNewPack.Size = new System.Drawing.Size(99, 38);
             this.buttonNewPack.TabIndex = 22;
@@ -288,11 +287,11 @@
             // 
             // buttonDeletePack
             // 
-            this.buttonDeletePack.Location = new System.Drawing.Point(681, 357);
+            this.buttonDeletePack.Location = new System.Drawing.Point(681, 441);
             this.buttonDeletePack.Name = "buttonDeletePack";
             this.buttonDeletePack.Size = new System.Drawing.Size(99, 38);
             this.buttonDeletePack.TabIndex = 23;
-            this.buttonDeletePack.Text = "Delete Selected Pack";
+            this.buttonDeletePack.Text = "Delete Pack";
             this.buttonDeletePack.UseVisualStyleBackColor = true;
             this.buttonDeletePack.Click += new System.EventHandler(this.buttonDeletePack_Click);
             // 
@@ -357,7 +356,7 @@
             // pictureBox2
             // 
             this.pictureBox2.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
-            this.pictureBox2.Location = new System.Drawing.Point(810, 53);
+            this.pictureBox2.Location = new System.Drawing.Point(810, 37);
             this.pictureBox2.Name = "pictureBox2";
             this.pictureBox2.Size = new System.Drawing.Size(128, 128);
             this.pictureBox2.SizeMode = System.Windows.Forms.PictureBoxSizeMode.Zoom;
@@ -477,7 +476,7 @@
             this.label13.AutoSize = true;
             this.label13.Font = new System.Drawing.Font("Segoe UI", 12F, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point);
             this.label13.ForeColor = System.Drawing.Color.White;
-            this.label13.Location = new System.Drawing.Point(786, 25);
+            this.label13.Location = new System.Drawing.Point(786, 9);
             this.label13.Name = "label13";
             this.label13.Size = new System.Drawing.Size(174, 21);
             this.label13.TabIndex = 39;
@@ -485,7 +484,7 @@
             // 
             // buttonChangePackEmblem
             // 
-            this.buttonChangePackEmblem.Location = new System.Drawing.Point(810, 190);
+            this.buttonChangePackEmblem.Location = new System.Drawing.Point(810, 174);
             this.buttonChangePackEmblem.Name = "buttonChangePackEmblem";
             this.buttonChangePackEmblem.Size = new System.Drawing.Size(128, 23);
             this.buttonChangePackEmblem.TabIndex = 40;
@@ -507,12 +506,34 @@
             this.listView2.DragDrop += new System.Windows.Forms.DragEventHandler(this.textBox1_DragDrop);
             this.listView2.DragOver += new System.Windows.Forms.DragEventHandler(this.textBox1_DragOver);
             // 
+            // buttonChangePackDetails
+            // 
+            this.buttonChangePackDetails.Location = new System.Drawing.Point(810, 203);
+            this.buttonChangePackDetails.Name = "buttonChangePackDetails";
+            this.buttonChangePackDetails.Size = new System.Drawing.Size(128, 23);
+            this.buttonChangePackDetails.TabIndex = 42;
+            this.buttonChangePackDetails.Text = "Change Pack Info";
+            this.buttonChangePackDetails.UseVisualStyleBackColor = true;
+            this.buttonChangePackDetails.Click += new System.EventHandler(this.buttonChangePackDetails_Click);
+            // 
+            // buttonChangeIconName
+            // 
+            this.buttonChangeIconName.Location = new System.Drawing.Point(681, 288);
+            this.buttonChangeIconName.Name = "buttonChangeIconName";
+            this.buttonChangeIconName.Size = new System.Drawing.Size(99, 38);
+            this.buttonChangeIconName.TabIndex = 43;
+            this.buttonChangeIconName.Text = "Change Icon(s) Name/Tags";
+            this.buttonChangeIconName.UseVisualStyleBackColor = true;
+            this.buttonChangeIconName.Click += new System.EventHandler(this.buttonChangeIconName_Click);
+            // 
             // Form1
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(7F, 15F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(45)))), ((int)(((byte)(45)))), ((int)(((byte)(45)))));
             this.ClientSize = new System.Drawing.Size(972, 642);
+            this.Controls.Add(this.buttonChangeIconName);
+            this.Controls.Add(this.buttonChangePackDetails);
             this.Controls.Add(this.buttonChangePackEmblem);
             this.Controls.Add(this.label13);
             this.Controls.Add(this.buttonNewPackOK);
@@ -603,5 +624,7 @@
         private Label label13;
         private Button buttonChangePackEmblem;
         private ListView listView2;
+        private Button buttonChangePackDetails;
+        private Button buttonChangeIconName;
     }
 }

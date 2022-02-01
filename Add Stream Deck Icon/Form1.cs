@@ -4,6 +4,8 @@ using System.Linq;
 using System.IO.Compression;
 using Add_Stream_Deck_Icon.Properties;
 using System.Net.Http;
+using System.Drawing;
+using System.Drawing.Imaging;
 
 namespace Add_Stream_Deck_Icon
 {
@@ -14,12 +16,19 @@ namespace Add_Stream_Deck_Icon
         string streamDeckPacksPath = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData) + "\\Elgato\\StreamDeck\\IconPacks";
         public string json = "";
         public bool changesMade = false;
+        public bool existingPack = false;
+        public List<int> existingIcons = new List<int>();
         Manifest importWaiting;
         string importWaitingTempPath;
         public List<Image> imagesToAdd = new List<Image>();
         public Form1()
         {
             InitializeComponent();
+            if (!Directory.Exists(streamDeckPacksPath))
+            {
+                MessageBox.Show("Could not locate Stream Deck icon pack directory");
+                Environment.Exit(0);
+            }
             string[] dirs = Directory.GetDirectories(streamDeckPacksPath);
             foreach (string dir in dirs)
             {
@@ -38,7 +47,7 @@ namespace Add_Stream_Deck_Icon
             using (OpenFileDialog dialog = new OpenFileDialog())
             {
                 dialog.Multiselect = true;
-                dialog.Filter = "PNG files (*.png)|*.png";
+                dialog.Filter = "Image files (*.jpg;*.png)|*.jpg;*.jpeg;*.png";
                 if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
                 {
                     foreach (string fileName in dialog.FileNames)
@@ -65,13 +74,13 @@ namespace Add_Stream_Deck_Icon
             List<string> addedFiles = new List<string>();
             foreach (var file in tempFiles)
             {
-                if (System.IO.Path.GetExtension(file).Equals(".png", StringComparison.InvariantCultureIgnoreCase))
+                if (System.IO.Path.GetExtension(file).Equals(".png", StringComparison.InvariantCultureIgnoreCase) || System.IO.Path.GetExtension(file).Equals(".jpg", StringComparison.InvariantCultureIgnoreCase) || System.IO.Path.GetExtension(file).Equals(".jpeg", StringComparison.InvariantCultureIgnoreCase))
                 {
                     addedFiles.Add(file);
                 }
                 else
                 {
-                    MessageBox.Show("Must Be PNG File Format");
+                    MessageBox.Show("Must Be PNG or JPG File Format");
                 }
             } // get all files droppeds  
             if (addedFiles != null && addedFiles.Any())
@@ -101,17 +110,39 @@ namespace Add_Stream_Deck_Icon
 
         private void buttonOK_Click(object sender, EventArgs e)
         {
-            GetIconInfo(imagesToAdd[0]);
-            imagesToAdd.RemoveAt(0);
-            if (imagesToAdd.Count > 0 && imagesToAdd[0] != null)
+            if (existingIcons.Any())
             {
-                AskForIconInfo(imagesToAdd[0]);
-                textBox3.Focus();
+                GetIconInfo(allPacks[listBox1.SelectedIndex].Icons[existingIcons[0]].Picture);
+                existingIcons.RemoveAt(0);
+                if (existingIcons.Any())
+                {
+                    pictureBox1.Image = allPacks[listBox1.SelectedIndex].Icons[existingIcons[0]].Picture;
+                    textBox3.Text = allPacks[listBox1.SelectedIndex].Icons[existingIcons[0]].Name;
+                    textBox4.Text = String.Join(',',allPacks[listBox1.SelectedIndex].Icons[existingIcons[0]].Tags);
+                    textBox3.Focus();
+                }
+                else
+                {
+                    AddIconsVisible(false);
+                    existingIcons = new List<int>();
+                    StartOver(false);
+                    ListExistingIcons();
+                }
             }
             else
             {
-                AddIconsVisible(false);
-                StartOver();
+                GetIconInfo(imagesToAdd[0]);
+                imagesToAdd.RemoveAt(0);
+                if (imagesToAdd.Count > 0 && imagesToAdd[0] != null)
+                {
+                    AskForIconInfo(imagesToAdd[0]);
+                    textBox3.Focus();
+                }
+                else
+                {
+                    AddIconsVisible(false);
+                    StartOver(true);
+                }
             }
 
         }
@@ -126,7 +157,7 @@ namespace Add_Stream_Deck_Icon
                 imagesToAdd.RemoveAt(0);
             }
             AddIconsVisible(false);
-            StartOver();
+            StartOver(true);
         }
 
         private void buttonDeleteAll_Click(object sender, EventArgs e)
@@ -149,11 +180,6 @@ namespace Add_Stream_Deck_Icon
         private void listBox1_SelectedIndexChanged(object sender, EventArgs e)
         {
             ListExistingIcons();
-        }
-
-        private void listView1_SelectedIndexChanged(object sender, EventArgs e)
-        {
-
         }
 
         private void AskForIconInfo(Image picture)
@@ -180,7 +206,12 @@ namespace Add_Stream_Deck_Icon
             {
                 tags[i].Trim();
             }
-            allPacks[listBox1.SelectedIndex].AddIcon(name, tags, picture);
+            if(!existingIcons.Any()) allPacks[listBox1.SelectedIndex].AddIcon(name, tags, picture);
+            else
+            {
+                allPacks[listBox1.SelectedIndex].Icons[existingIcons[0]].Name = name;
+                allPacks[listBox1.SelectedIndex].Icons[existingIcons[0]].Tags = tags;
+            }
             changesMade = true;
             textBox3.Clear();
             textBox4.Clear();
@@ -202,9 +233,9 @@ namespace Add_Stream_Deck_Icon
             DefaultControlsEnabled(!enabled);
         }
 
-        public void StartOver()
+        public void StartOver(bool newIcons)
         {
-            imagesToAdd = new List<Image>();
+            if(newIcons) imagesToAdd = new List<Image>();
             listView2.Items.Clear();
             textBox3.Clear();
             textBox4.Clear();
@@ -554,6 +585,9 @@ namespace Add_Stream_Deck_Icon
             buttonImport.Enabled = enabled;
             buttonNewPack.Enabled = enabled;
             buttonSave.Enabled = enabled;
+            listBox1.Enabled = enabled;
+            buttonChangeIconName.Enabled = enabled;
+            buttonChangePackDetails.Enabled = enabled;
         }
         private void NewPackControlsVisible(bool enabled)
         {
@@ -589,6 +623,7 @@ namespace Add_Stream_Deck_Icon
         private void buttonCancelNewPack_Click(object sender, EventArgs e)
         {
             NewPackControlsVisible(false);
+            existingPack = false;
         }
 
         private void buttonNewPackOK_Click(object sender, EventArgs e)
@@ -601,32 +636,74 @@ namespace Add_Stream_Deck_Icon
             {
                 bool badName = false;
                 string name = textBox6.Text;
-                foreach (Manifest manifest in allPacks)
+                if (existingPack && String.Equals(allPacks[listBox1.SelectedIndex].Name.Replace(" ", "").ToLower(), name.Replace(" ", "").ToLower()))
                 {
-                    if (String.Equals(manifest.Name.Replace(" ", "").ToLower(), name.Replace(" ", "").ToLower()))
-                    {
-                        badName = true;
-                        MessageBox.Show("Pack Name Already Exists");
-                        textBox6.Clear();
-                        textBox6.Focus();
-                    }
-                }
-                if (!badName)
-                {
-                    string description;
-                    string author;
-                    if (String.IsNullOrWhiteSpace(textBox7.Text)) description = "Custom icons for Elgato Stream Deck";
-                    else description = textBox7.Text;
-                    if(String.IsNullOrWhiteSpace((string)textBox8.Text)) author = "Custom User";
-                    else author = textBox8.Text;
-                    Manifest tempMani = new Manifest(name, description, author, streamDeckPacksPath);
-                    tempMani.SaveManifest();
-                    allPacks.Add(new Manifest(tempMani.IconPackPath));
+                    allPacks[listBox1.SelectedIndex].Name = name;
+                    if (String.IsNullOrWhiteSpace(textBox7.Text)) allPacks[listBox1.SelectedIndex].Description = "Custom icons for Elgato Stream Deck";
+                    else allPacks[listBox1.SelectedIndex].Description = textBox7.Text;
+                    if (String.IsNullOrWhiteSpace(textBox8.Text)) allPacks[listBox1.SelectedIndex].Author = "Custom User";
+                    else allPacks[listBox1.SelectedIndex].Author = textBox8.Text;
+                    existingPack = false;
                     textBox6.Clear();
                     textBox7.Clear();
                     textBox8.Clear();
                     NewPackControlsVisible(false);
                     UpdateListBoxText();
+                    changesMade = true;
+                }
+                else
+                {
+                    foreach (Manifest manifest in allPacks)
+                    {
+                        if (String.Equals(manifest.Name.Replace(" ", "").ToLower(), name.Replace(" ", "").ToLower()))
+                        {
+                            badName = true;
+                            MessageBox.Show("Pack Name Already Exists");
+                            textBox6.Clear();
+                            textBox6.Focus();
+                        }
+                    }
+                    if (!badName)
+                    {
+                        if(existingPack)
+                        {
+                            allPacks[listBox1.SelectedIndex].Name = name;
+                            if (String.IsNullOrWhiteSpace(textBox7.Text)) allPacks[listBox1.SelectedIndex].Description = "Custom icons for Elgato Stream Deck";
+                            else allPacks[listBox1.SelectedIndex].Description = textBox7.Text;
+                            if (String.IsNullOrWhiteSpace(textBox8.Text)) allPacks[listBox1.SelectedIndex].Author = "Custom User";
+                            else allPacks[listBox1.SelectedIndex].Author = textBox8.Text;
+                            string tempPath = allPacks[listBox1.SelectedIndex].IconPackPath;
+                            allPacks[listBox1.SelectedIndex].NewPackPath(streamDeckPacksPath);
+                            allPacks[listBox1.SelectedIndex].SaveManifest();
+                            DirectoryInfo di = new DirectoryInfo(tempPath);
+                            di.Delete(true);
+                            existingPack = false;
+                            textBox6.Clear();
+                            textBox7.Clear();
+                            textBox8.Clear();
+                            NewPackControlsVisible(false);
+                            UpdateListBoxText();
+                            changesMade = true;
+                        }
+                        else
+                        {
+                            string description;
+                            string author;
+                            if (String.IsNullOrWhiteSpace(textBox7.Text)) description = "Custom icons for Elgato Stream Deck";
+                            else description = textBox7.Text;
+                            if (String.IsNullOrWhiteSpace(textBox8.Text)) author = "Custom User";
+                            else author = textBox8.Text;
+                            Manifest tempMani = new Manifest(name, description, author, streamDeckPacksPath);
+                            tempMani.SaveManifest();
+                            allPacks.Add(new Manifest(tempMani.IconPackPath));
+                            textBox6.Clear();
+                            textBox7.Clear();
+                            textBox8.Clear();
+                            NewPackControlsVisible(false);
+                            UpdateListBoxText();
+                            changesMade = true; 
+                        }
+                    }
                 }
             }
         }
@@ -638,10 +715,23 @@ namespace Add_Stream_Deck_Icon
                 if (allPacks.Any())
                 {
                     dialog.Multiselect = false;
-                    dialog.Filter = "PNG files (*.png)|*.png";
+                    dialog.Filter = "Image files (*.jpg;*.png)|*.jpg;*.jpeg;*.png";
                     if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
                     {
-                        allPacks[listBox1.SelectedIndex].Emblem = Image.FromFile(dialog.FileName);
+                        Image picture = Image.FromFile(dialog.FileName);
+                        Image bmpNewImage = new Bitmap(picture.Width,
+                                           picture.Height);
+                        Graphics gfxNewImage = Graphics.FromImage(bmpNewImage);
+                        gfxNewImage.DrawImage(picture,
+                                              new Rectangle(0, 0, bmpNewImage.Width,
+                                                            bmpNewImage.Height),
+                                              0, 0,
+                                              picture.
+                                              Width, picture.Height,
+                                              GraphicsUnit.Pixel);
+                        gfxNewImage.Dispose();
+                        picture.Dispose();
+                        allPacks[listBox1.SelectedIndex].Emblem = bmpNewImage;
                         changesMade = true;
                         ListExistingIcons();
                     }
@@ -650,12 +740,40 @@ namespace Add_Stream_Deck_Icon
             }
         }
 
-        private void buttonBrowse_MouseEnter(object sender, EventArgs e)
+
+        private void buttonChangePackDetails_Click(object sender, EventArgs e)
         {
+            if (allPacks.Any())
+            {
+                NewPackControlsVisible(true);
+                textBox6.Text = allPacks[listBox1.SelectedIndex].Name;
+                textBox7.Text = allPacks[listBox1.SelectedIndex].Description;
+                textBox8.Text = allPacks[listBox1.SelectedIndex].Author;
+                existingPack = true;
+            }
+            
         }
 
-        private void buttonBrowse_MouseLeave(object sender, EventArgs e)
+        private void buttonChangeIconName_Click(object sender, EventArgs e)
         {
+            if (allPacks.Any())
+            {
+                var selected = listView1.SelectedIndices;
+                foreach (var i in selected)
+                {
+                    existingIcons.Add(Int32.Parse(i.ToString()));
+                }
+                if (existingIcons.Any())
+                {
+                    AddIconsVisible(true);
+                    buttonSkip.Visible = false;
+                    label5.Visible = false;
+                    pictureBox1.Image = allPacks[listBox1.SelectedIndex].Icons[existingIcons[0]].Picture;
+                    textBox3.Text = allPacks[listBox1.SelectedIndex].Icons[existingIcons[0]].Name;
+                    textBox4.Text = String.Join(',', allPacks[listBox1.SelectedIndex].Icons[existingIcons[0]].Tags);
+                    textBox3.Focus();
+                }
+            }
         }
     }
 
@@ -669,11 +787,23 @@ namespace Add_Stream_Deck_Icon
 
         public Icon(int index, string path, string name, string[] tags, Image picture)
         {
+            Image bmpNewImage = new Bitmap(picture.Width,
+                                           picture.Height);
+            Graphics gfxNewImage = Graphics.FromImage(bmpNewImage);
+            gfxNewImage.DrawImage(picture,
+                                  new Rectangle(0, 0, bmpNewImage.Width,
+                                                bmpNewImage.Height),
+                                  0, 0,
+                                  picture.
+                                  Width, picture.Height,
+                                  GraphicsUnit.Pixel);
+            gfxNewImage.Dispose();
+            picture.Dispose();
             IconNumber = index;
             Path = path;
             Name = name;
             Tags = tags;
-            Picture = picture;
+            Picture = bmpNewImage;
         }
 
         public string AddToIconPack(string json,bool firstIcon)
@@ -748,13 +878,13 @@ namespace Add_Stream_Deck_Icon
             Icons = new List<Icon>();
             HighestIconNumber = 0;
             NewPackPath(streamDeckPacksPath);
-            Directory.CreateDirectory(IconPackPath + "\\backup\\icons-old");
         }
         public void NewPackPath(string streamDeckPacksPath)
         {
             IconPackPath = streamDeckPacksPath + "\\zzcustomuser." + Name.Replace(" ","").ToLower() + ".iconpack.sdIconPack";
             Directory.CreateDirectory(IconPackPath);
             Directory.CreateDirectory(IconPackPath + "\\icons");
+            Directory.CreateDirectory(IconPackPath + "\\backup\\icons-old");
         }
         public void FetchPackData()
         {
@@ -770,18 +900,16 @@ namespace Add_Stream_Deck_Icon
 
         private string GetManifestDataPiece(string manifestDataRaw, string targetDataPiece)
         {
-            string[] dataPieceArray = manifestDataRaw.Split(targetDataPiece);
-            string dataPiece = dataPieceArray[1].Substring(dataPieceArray[1].IndexOf(':') + 1);
-            dataPiece = dataPiece.Substring(dataPiece.IndexOf('\"') + 1);
+            string[] dataPieceArray = manifestDataRaw.Split(targetDataPiece + "\": \"");
+            string dataPiece = dataPieceArray[1];
             dataPiece = dataPiece.Remove(dataPiece.IndexOf('\"'));
             return dataPiece;
         }
 
         private string ReplaceManifestDataPiece(string manifestDataRaw, string targetDataPiece, string newData)
         {
-            string[] manifestArray = manifestDataRaw.Split(targetDataPiece);
-            string manifestSub = manifestArray[1].Substring(manifestArray[1].IndexOf(':') + 1);
-            manifestSub = manifestSub.Substring(manifestSub.IndexOf('\"') + 1);
+            string[] manifestArray = manifestDataRaw.Split(targetDataPiece + "\": \"");
+            string manifestSub = manifestArray[1];
             manifestSub = manifestSub.Substring(manifestSub.IndexOf('\"'));
             string newManifest = manifestArray[0] + targetDataPiece + "\": \"" + newData + manifestSub;
             return newManifest;
@@ -818,7 +946,23 @@ namespace Add_Stream_Deck_Icon
                     if(number > HighestIconNumber) HighestIconNumber = number;
                 }
             }
-            if (File.Exists(IconPackPath + "\\backup\\icon-old.png")) Emblem = Image.FromFile(IconPackPath + "\\backup\\icon-old.png");
+            if (File.Exists(IconPackPath + "\\backup\\icon-old.png"))
+            {
+                Image picture = Image.FromFile(IconPackPath + "\\backup\\icon-old.png");
+                Image bmpNewImage = new Bitmap(picture.Width,
+                                           picture.Height);
+                Graphics gfxNewImage = Graphics.FromImage(bmpNewImage);
+                gfxNewImage.DrawImage(picture,
+                                      new Rectangle(0, 0, bmpNewImage.Width,
+                                                    bmpNewImage.Height),
+                                      0, 0,
+                                      picture.
+                                      Width, picture.Height,
+                                      GraphicsUnit.Pixel);
+                gfxNewImage.Dispose();
+                picture.Dispose();
+                Emblem = bmpNewImage;
+            }
             else Emblem = Resources.imgIcon1;
         }
 
@@ -880,17 +1024,16 @@ namespace Add_Stream_Deck_Icon
             File.Delete(IconPackPath + "\\manifest.json");
             File.Delete(IconPackPath + "\\icon.png");
             if (Icons.Any()) SaveImagesToIconsFolder();
-            Emblem.Save(IconPackPath + "\\icon.png");
+            Emblem.Save(IconPackPath + "\\icon.png",ImageFormat.Png);
             File.WriteAllText(IconPackPath + "\\icons.json", CompileIconsJSON());
             CompileNewManifest();
             File.WriteAllText(IconPackPath + "\\manifest.json",manifestRawData);
-            DisposeAllImages();
         }
         private void SaveImagesToIconsFolder()
         {
             foreach(Icon icon in Icons)
             {
-                icon.Picture.Save(IconPackPath + "\\icons\\" + icon.Path);
+                icon.Picture.Save(IconPackPath + "\\icons\\" + icon.Path,ImageFormat.Png);
             }
         }
         private string CompileIconsJSON()
@@ -923,6 +1066,7 @@ namespace Add_Stream_Deck_Icon
 ";
             ChangePackName(Name);
             ChangePackDescription(Description);
+            ChangePackAuthor(Author);
         }
         public static void Copy(string sourceDirectory, string targetDirectory)
         {
