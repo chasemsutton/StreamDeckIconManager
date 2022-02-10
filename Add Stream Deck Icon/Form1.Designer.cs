@@ -69,6 +69,7 @@
             this.listView2 = new System.Windows.Forms.ListView();
             this.buttonChangePackDetails = new System.Windows.Forms.Button();
             this.buttonChangeIconName = new System.Windows.Forms.Button();
+            this.button1 = new System.Windows.Forms.Button();
             ((System.ComponentModel.ISupportInitialize)(this.pictureBox1)).BeginInit();
             ((System.ComponentModel.ISupportInitialize)(this.pictureBox2)).BeginInit();
             this.SuspendLayout();
@@ -192,11 +193,11 @@
             this.label5.BackColor = System.Drawing.Color.DimGray;
             this.label5.Font = new System.Drawing.Font("Segoe UI", 15F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point);
             this.label5.ForeColor = System.Drawing.SystemColors.ButtonShadow;
-            this.label5.Location = new System.Drawing.Point(154, 117);
+            this.label5.Location = new System.Drawing.Point(68, 117);
             this.label5.Name = "label5";
-            this.label5.Size = new System.Drawing.Size(275, 28);
+            this.label5.Size = new System.Drawing.Size(447, 28);
             this.label5.TabIndex = 14;
-            this.label5.Text = "Drag && Drop PNG or JPG Files";
+            this.label5.Text = "Drag && Drop(Supported File Types: .png, .jpg, .gif)";
             this.label5.DragDrop += new System.Windows.Forms.DragEventHandler(this.textBox1_DragDrop);
             this.label5.DragOver += new System.Windows.Forms.DragEventHandler(this.textBox1_DragOver);
             // 
@@ -526,12 +527,23 @@
             this.buttonChangeIconName.UseVisualStyleBackColor = true;
             this.buttonChangeIconName.Click += new System.EventHandler(this.buttonChangeIconName_Click);
             // 
+            // button1
+            // 
+            this.button1.Location = new System.Drawing.Point(673, 108);
+            this.button1.Name = "button1";
+            this.button1.Size = new System.Drawing.Size(75, 23);
+            this.button1.TabIndex = 44;
+            this.button1.Text = "button1";
+            this.button1.UseVisualStyleBackColor = true;
+            this.button1.Click += new System.EventHandler(this.button1_Click);
+            // 
             // Form1
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(7F, 15F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(45)))), ((int)(((byte)(45)))), ((int)(((byte)(45)))));
             this.ClientSize = new System.Drawing.Size(972, 642);
+            this.Controls.Add(this.button1);
             this.Controls.Add(this.buttonChangeIconName);
             this.Controls.Add(this.buttonChangePackDetails);
             this.Controls.Add(this.buttonChangePackEmblem);
@@ -626,5 +638,6 @@
         private ListView listView2;
         private Button buttonChangePackDetails;
         private Button buttonChangeIconName;
+        private Button button1;
     }
 }

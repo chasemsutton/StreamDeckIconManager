@@ -20,7 +20,7 @@ namespace Add_Stream_Deck_Icon
         public List<int> existingIcons = new List<int>();
         Manifest importWaiting;
         string importWaitingTempPath;
-        public List<Image> imagesToAdd = new List<Image>();
+        public List<Bitmap> imagesToAdd = new List<Bitmap>();
         public Form1()
         {
             InitializeComponent();
@@ -39,7 +39,6 @@ namespace Add_Stream_Deck_Icon
                 }
             }
             UpdateListBoxText();
-            //ListExistingIcons();
         }
 
         private void buttonBrowse_Click(object sender, EventArgs e)
@@ -47,12 +46,13 @@ namespace Add_Stream_Deck_Icon
             using (OpenFileDialog dialog = new OpenFileDialog())
             {
                 dialog.Multiselect = true;
-                dialog.Filter = "Image files (*.jpg;*.png)|*.jpg;*.jpeg;*.png";
+                dialog.Filter = "Image files (*.jpg;*.png;*.gif)|*.jpg;*.jpeg;*.png;*.gif";
                 if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
                 {
                     foreach (string fileName in dialog.FileNames)
                     {
-                        imagesToAdd.Add(Image.FromFile(fileName));
+                        MemoryStream ms = new MemoryStream(File.ReadAllBytes(fileName));
+                        imagesToAdd.Add(new Bitmap(ms));
                     }
                     ListNewIcons();
                     label5.Visible = false;
@@ -74,7 +74,7 @@ namespace Add_Stream_Deck_Icon
             List<string> addedFiles = new List<string>();
             foreach (var file in tempFiles)
             {
-                if (System.IO.Path.GetExtension(file).Equals(".png", StringComparison.InvariantCultureIgnoreCase) || System.IO.Path.GetExtension(file).Equals(".jpg", StringComparison.InvariantCultureIgnoreCase) || System.IO.Path.GetExtension(file).Equals(".jpeg", StringComparison.InvariantCultureIgnoreCase))
+                if (System.IO.Path.GetExtension(file).Equals(".png", StringComparison.InvariantCultureIgnoreCase) || System.IO.Path.GetExtension(file).Equals(".jpg", StringComparison.InvariantCultureIgnoreCase) || System.IO.Path.GetExtension(file).Equals(".jpeg", StringComparison.InvariantCultureIgnoreCase) || System.IO.Path.GetExtension(file).Equals(".gif", StringComparison.InvariantCultureIgnoreCase))
                 {
                     addedFiles.Add(file);
                 }
@@ -87,7 +87,8 @@ namespace Add_Stream_Deck_Icon
             {
                 foreach (string fileName in addedFiles)
                 {
-                    imagesToAdd.Add(Image.FromFile(fileName));
+                    MemoryStream ms = new MemoryStream(File.ReadAllBytes(fileName));
+                    imagesToAdd.Add(new Bitmap(ms));
                 }
                 ListNewIcons();
                 label5.Visible = false;
@@ -182,7 +183,7 @@ namespace Add_Stream_Deck_Icon
             ListExistingIcons();
         }
 
-        private void AskForIconInfo(Image picture)
+        private void AskForIconInfo(Bitmap picture)
         {
             pictureBox1.Image = picture;
             textBox3.Clear();
@@ -190,7 +191,7 @@ namespace Add_Stream_Deck_Icon
             textBox3.Focus();
         }
 
-        private void GetIconInfo(Image picture)
+        private void GetIconInfo(Bitmap picture)
         {
             string[] tags = { "custom" };
             string name = "Custom Icon " + (allPacks[listBox1.SelectedIndex].HighestIconNumber + 1).ToString();
@@ -235,7 +236,7 @@ namespace Add_Stream_Deck_Icon
 
         public void StartOver(bool newIcons)
         {
-            if(newIcons) imagesToAdd = new List<Image>();
+            if(newIcons) imagesToAdd = new List<Bitmap>();
             listView2.Items.Clear();
             textBox3.Clear();
             textBox4.Clear();
@@ -775,6 +776,14 @@ namespace Add_Stream_Deck_Icon
                 }
             }
         }
+
+        private void button1_Click(object sender, EventArgs e)
+        {
+            MemoryStream ms = new MemoryStream(File.ReadAllBytes(@"C:\Users\chase\OneDrive\Pictures\Stream Deck\Elgato.gif"));
+            Bitmap bmpTest = new Bitmap(ms);
+            File.Delete(@"C:\Users\chase\OneDrive\Pictures\Stream Deck\Elgato.gif");
+            bmpTest.Save(@"C:\Users\chase\OneDrive\Pictures\Stream Deck\ElgatoSave.gif", ImageFormat.Gif);
+        }
     }
 
     class Icon
@@ -783,11 +792,11 @@ namespace Add_Stream_Deck_Icon
         public string Path { get; set; }
         public string Name { get; set; }
         public string[] Tags { get; set; }
-        public Image Picture { get; set; }
+        public Bitmap Picture { get; set; }
 
-        public Icon(int index, string path, string name, string[] tags, Image picture)
+        public Icon(int index, string path, string name, string[] tags, Bitmap picture)
         {
-            Image bmpNewImage = new Bitmap(picture.Width,
+            /*Image bmpNewImage = new Bitmap(picture.Width,
                                            picture.Height);
             Graphics gfxNewImage = Graphics.FromImage(bmpNewImage);
             gfxNewImage.DrawImage(picture,
@@ -798,12 +807,12 @@ namespace Add_Stream_Deck_Icon
                                   Width, picture.Height,
                                   GraphicsUnit.Pixel);
             gfxNewImage.Dispose();
-            picture.Dispose();
+            picture.Dispose();*/
             IconNumber = index;
             Path = path;
             Name = name;
             Tags = tags;
-            Picture = bmpNewImage;
+            Picture = picture;
         }
 
         public string AddToIconPack(string json,bool firstIcon)
@@ -942,7 +951,7 @@ namespace Add_Stream_Deck_Icon
                 {
                     string path = GetIconDataPiece(iconData, "path");
                     int number = Int32.Parse(GetIconDataPiece(iconData, "number"));
-                    Icons.Add(new Icon(number, path, GetIconDataPiece(iconData, "name"), GetIconDataPiece(iconData, "tags").Split(','), Image.FromFile(IconPackPath + "\\backup\\icons-old\\" + path)));
+                    Icons.Add(new Icon(number, path, GetIconDataPiece(iconData, "name"), GetIconDataPiece(iconData, "tags").Split(','), new Bitmap(new MemoryStream(File.ReadAllBytes(IconPackPath + "\\backup\\icons-old\\" + path))) ));
                     if(number > HighestIconNumber) HighestIconNumber = number;
                 }
             }
@@ -966,10 +975,10 @@ namespace Add_Stream_Deck_Icon
             else Emblem = Resources.imgIcon1;
         }
 
-        public void AddIcon(string name, string[] tags,Image picture)
+        public void AddIcon(string name, string[] tags,Bitmap picture)
         {
-            
-            string path = "Custom Icon-" + (HighestIconNumber + 1).ToString() + ".png";
+
+            string path = "Custom Icon-" + (HighestIconNumber + 1).ToString() + "." + new ImageFormatConverter().ConvertToString(picture.RawFormat).ToLower();
             Icons.Add(new Icon(HighestIconNumber + 1, path, name, tags, picture));
             HighestIconNumber++;
         }
@@ -1033,7 +1042,7 @@ namespace Add_Stream_Deck_Icon
         {
             foreach(Icon icon in Icons)
             {
-                icon.Picture.Save(IconPackPath + "\\icons\\" + icon.Path,ImageFormat.Png);
+                icon.Picture.Save(IconPackPath + "\\icons\\" + icon.Path,icon.Picture.RawFormat);
             }
         }
         private string CompileIconsJSON()
