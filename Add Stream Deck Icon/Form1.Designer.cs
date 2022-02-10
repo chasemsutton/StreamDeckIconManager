@@ -69,7 +69,6 @@
             this.listView2 = new System.Windows.Forms.ListView();
             this.buttonChangePackDetails = new System.Windows.Forms.Button();
             this.buttonChangeIconName = new System.Windows.Forms.Button();
-            this.button1 = new System.Windows.Forms.Button();
             ((System.ComponentModel.ISupportInitialize)(this.pictureBox1)).BeginInit();
             ((System.ComponentModel.ISupportInitialize)(this.pictureBox2)).BeginInit();
             this.SuspendLayout();
@@ -527,23 +526,12 @@
             this.buttonChangeIconName.UseVisualStyleBackColor = true;
             this.buttonChangeIconName.Click += new System.EventHandler(this.buttonChangeIconName_Click);
             // 
-            // button1
-            // 
-            this.button1.Location = new System.Drawing.Point(673, 108);
-            this.button1.Name = "button1";
-            this.button1.Size = new System.Drawing.Size(75, 23);
-            this.button1.TabIndex = 44;
-            this.button1.Text = "button1";
-            this.button1.UseVisualStyleBackColor = true;
-            this.button1.Click += new System.EventHandler(this.button1_Click);
-            // 
             // Form1
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(7F, 15F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(45)))), ((int)(((byte)(45)))), ((int)(((byte)(45)))));
             this.ClientSize = new System.Drawing.Size(972, 642);
-            this.Controls.Add(this.button1);
             this.Controls.Add(this.buttonChangeIconName);
             this.Controls.Add(this.buttonChangePackDetails);
             this.Controls.Add(this.buttonChangePackEmblem);
@@ -638,6 +626,5 @@
         private ListView listView2;
         private Button buttonChangePackDetails;
         private Button buttonChangeIconName;
-        private Button button1;
     }
 }

@@ -597,7 +597,6 @@ namespace Add_Stream_Deck_Icon
             label10.Visible = enabled;
             label11.Visible = enabled;
             label12.Visible = enabled;
-            label13.Visible = enabled;
             textBox6.Visible = enabled;
             textBox7.Visible = enabled;
             textBox8.Visible = enabled;
@@ -775,14 +774,6 @@ namespace Add_Stream_Deck_Icon
                     textBox3.Focus();
                 }
             }
-        }
-
-        private void button1_Click(object sender, EventArgs e)
-        {
-            MemoryStream ms = new MemoryStream(File.ReadAllBytes(@"C:\Users\chase\OneDrive\Pictures\Stream Deck\Elgato.gif"));
-            Bitmap bmpTest = new Bitmap(ms);
-            File.Delete(@"C:\Users\chase\OneDrive\Pictures\Stream Deck\Elgato.gif");
-            bmpTest.Save(@"C:\Users\chase\OneDrive\Pictures\Stream Deck\ElgatoSave.gif", ImageFormat.Gif);
         }
     }
 
