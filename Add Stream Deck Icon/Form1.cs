@@ -6,6 +6,7 @@ using Add_Stream_Deck_Icon.Properties;
 using System.Net.Http;
 using System.Drawing;
 using System.Drawing.Imaging;
+using System.Runtime.Intrinsics.X86;
 
 namespace Add_Stream_Deck_Icon
 {
@@ -20,7 +21,7 @@ namespace Add_Stream_Deck_Icon
         public List<int> existingIcons = new List<int>();
         Manifest importWaiting;
         string importWaitingTempPath;
-        public List<Bitmap> imagesToAdd = new List<Bitmap>();
+        private List<Icon> imagesToAdd = new List<Icon>();
         public Form1()
         {
             InitializeComponent();
@@ -34,11 +35,18 @@ namespace Add_Stream_Deck_Icon
             {
                 if (dir.Substring(dir.LastIndexOf('\\') + 1).StartsWith("zzcustomuser"))
                 {
-                    Manifest testMani = new Manifest(dir);
-                    allPacks.Add(testMani);
-                }
+                    Manifest testMani = new Manifest(dir);                    
+                }                
             }
-            UpdateListBoxText();
+            UpdateListBoxText();            
+        }
+
+        private void AddIconWithDefaultMetadata(string fileName)
+        {
+            MemoryStream ms = new MemoryStream(File.ReadAllBytes(fileName));
+            var name = Path.GetFileNameWithoutExtension(fileName).Replace("_", " ");
+            var tags = name.Split(" ").Append("custom").ToArray();
+            imagesToAdd.Add(new Icon(0, fileName, name, tags, new Bitmap(ms)));
         }
 
         private void buttonBrowse_Click(object sender, EventArgs e)
@@ -51,8 +59,7 @@ namespace Add_Stream_Deck_Icon
                 {
                     foreach (string fileName in dialog.FileNames)
                     {
-                        MemoryStream ms = new MemoryStream(File.ReadAllBytes(fileName));
-                        imagesToAdd.Add(new Bitmap(ms));
+                       AddIconWithDefaultMetadata(fileName);
                     }
                     ListNewIcons();
                     label5.Visible = false;
@@ -87,8 +94,7 @@ namespace Add_Stream_Deck_Icon
             {
                 foreach (string fileName in addedFiles)
                 {
-                    MemoryStream ms = new MemoryStream(File.ReadAllBytes(fileName));
-                    imagesToAdd.Add(new Bitmap(ms));
+                    AddIconWithDefaultMetadata(fileName);            
                 }
                 ListNewIcons();
                 label5.Visible = false;
@@ -113,7 +119,7 @@ namespace Add_Stream_Deck_Icon
         {
             if (existingIcons.Any())
             {
-                GetIconInfo(allPacks[listBox1.SelectedIndex].Icons[existingIcons[0]].Picture);
+                GetIconInfo(allPacks[listBox1.SelectedIndex].Icons[existingIcons[0]]);
                 existingIcons.RemoveAt(0);
                 if (existingIcons.Any())
                 {
@@ -183,19 +189,19 @@ namespace Add_Stream_Deck_Icon
             ListExistingIcons();
         }
 
-        private void AskForIconInfo(Bitmap picture)
+        private void AskForIconInfo(Icon picture)
         {
-            pictureBox1.Image = picture;
+            pictureBox1.Image = picture.Picture;
             textBox3.Clear();
             textBox4.Clear();
             textBox3.Focus();
         }
 
-        private void GetIconInfo(Bitmap picture)
+        private void GetIconInfo(Icon picture)
         {
-            string[] tags = { "custom" };
-            string name = "Custom Icon " + (allPacks[listBox1.SelectedIndex].HighestIconNumber + 1).ToString();
-            if (!String.IsNullOrEmpty(textBox3.Text))
+            string[] tags = picture.Tags;
+            string name = picture.Name;
+             if (!String.IsNullOrEmpty(textBox3.Text))
             {
                 name = textBox3.Text;
             }
@@ -207,7 +213,7 @@ namespace Add_Stream_Deck_Icon
             {
                 tags[i].Trim();
             }
-            if(!existingIcons.Any()) allPacks[listBox1.SelectedIndex].AddIcon(name, tags, picture);
+            if(!existingIcons.Any()) allPacks[listBox1.SelectedIndex].AddIcon(name, tags, picture.Picture);
             else
             {
                 allPacks[listBox1.SelectedIndex].Icons[existingIcons[0]].Name = name;
@@ -236,7 +242,7 @@ namespace Add_Stream_Deck_Icon
 
         public void StartOver(bool newIcons)
         {
-            if(newIcons) imagesToAdd = new List<Bitmap>();
+            if(newIcons) imagesToAdd = new List<Icon>();
             listView2.Items.Clear();
             textBox3.Clear();
             textBox4.Clear();
@@ -289,9 +295,9 @@ namespace Add_Stream_Deck_Icon
             listView2.View = View.LargeIcon;
             ImageList imageList = new ImageList();
             imageList.ImageSize = new Size(60, 60);
-            foreach (Image icon in imagesToAdd)
+            foreach (Icon icon in imagesToAdd)
             {
-                imageList.Images.Add(icon);
+                imageList.Images.Add(icon.Picture);
 
                 listView2.Items.Add(new ListViewItem
                 {
@@ -968,7 +974,6 @@ namespace Add_Stream_Deck_Icon
 
         public void AddIcon(string name, string[] tags,Bitmap picture)
         {
-
             string path = "Custom Icon-" + (HighestIconNumber + 1).ToString() + "." + new ImageFormatConverter().ConvertToString(picture.RawFormat).ToLower();
             Icons.Add(new Icon(HighestIconNumber + 1, path, name, tags, picture));
             HighestIconNumber++;
