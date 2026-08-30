@@ -1,9 +1,10 @@
-﻿
-Microsoft Visual Studio Solution File, Format Version 12.00
+﻿Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.0.32112.339
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Add Stream Deck Icon", "Add Stream Deck Icon\Add Stream Deck Icon.csproj", "{4CBF42F9-83F7-4FE6-9664-B804CE6F8235}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Setup", "Setup\Setup.csproj", "{A7C3E2D1-9B4F-4A81-8E2C-1D6F0B5A9C33}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -15,6 +16,10 @@ Global
 		{4CBF42F9-83F7-4FE6-9664-B804CE6F8235}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{4CBF42F9-83F7-4FE6-9664-B804CE6F8235}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{4CBF42F9-83F7-4FE6-9664-B804CE6F8235}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A7C3E2D1-9B4F-4A81-8E2C-1D6F0B5A9C33}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A7C3E2D1-9B4F-4A81-8E2C-1D6F0B5A9C33}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A7C3E2D1-9B4F-4A81-8E2C-1D6F0B5A9C33}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A7C3E2D1-9B4F-4A81-8E2C-1D6F0B5A9C33}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

@@ -13,6 +13,7 @@
 
   <ItemGroup>
     <Content Include="StreamDeckIconManagerLogo.ico" />
+    <Compile Include="..\shared\ReleaseNaming.cs" Link="ReleaseNaming.cs" />
   </ItemGroup>
 
   <ItemGroup>

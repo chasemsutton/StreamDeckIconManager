@@ -69,6 +69,9 @@
             this.listView2 = new System.Windows.Forms.ListView();
             this.buttonChangePackDetails = new System.Windows.Forms.Button();
             this.buttonChangeIconName = new System.Windows.Forms.Button();
+            this.buttonCheckUpdates = new System.Windows.Forms.Button();
+            this.labelVersion = new System.Windows.Forms.Label();
+            this.labelUpdateStatus = new System.Windows.Forms.Label();
             ((System.ComponentModel.ISupportInitialize)(this.pictureBox1)).BeginInit();
             ((System.ComponentModel.ISupportInitialize)(this.pictureBox2)).BeginInit();
             this.SuspendLayout();
@@ -526,12 +529,44 @@
             this.buttonChangeIconName.UseVisualStyleBackColor = true;
             this.buttonChangeIconName.Click += new System.EventHandler(this.buttonChangeIconName_Click);
             // 
+            // buttonCheckUpdates
+            // 
+            this.buttonCheckUpdates.Location = new System.Drawing.Point(681, 185);
+            this.buttonCheckUpdates.Name = "buttonCheckUpdates";
+            this.buttonCheckUpdates.Size = new System.Drawing.Size(99, 38);
+            this.buttonCheckUpdates.TabIndex = 44;
+            this.buttonCheckUpdates.Text = "Check for Updates";
+            this.buttonCheckUpdates.UseVisualStyleBackColor = true;
+            this.buttonCheckUpdates.Click += new System.EventHandler(this.buttonCheckUpdates_Click);
+            // 
+            // labelVersion
+            // 
+            this.labelVersion.AutoSize = true;
+            this.labelVersion.ForeColor = System.Drawing.Color.Silver;
+            this.labelVersion.Location = new System.Drawing.Point(786, 635);
+            this.labelVersion.Name = "labelVersion";
+            this.labelVersion.Size = new System.Drawing.Size(37, 15);
+            this.labelVersion.TabIndex = 45;
+            this.labelVersion.Text = "v0.0.0";
+            // 
+            // labelUpdateStatus
+            // 
+            this.labelUpdateStatus.AutoSize = true;
+            this.labelUpdateStatus.ForeColor = System.Drawing.Color.Silver;
+            this.labelUpdateStatus.Location = new System.Drawing.Point(12, 635);
+            this.labelUpdateStatus.Name = "labelUpdateStatus";
+            this.labelUpdateStatus.Size = new System.Drawing.Size(0, 15);
+            this.labelUpdateStatus.TabIndex = 46;
+            // 
             // Form1
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(7F, 15F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(45)))), ((int)(((byte)(45)))), ((int)(((byte)(45)))));
-            this.ClientSize = new System.Drawing.Size(972, 642);
+            this.ClientSize = new System.Drawing.Size(972, 662);
+            this.Controls.Add(this.labelUpdateStatus);
+            this.Controls.Add(this.labelVersion);
+            this.Controls.Add(this.buttonCheckUpdates);
             this.Controls.Add(this.buttonChangeIconName);
             this.Controls.Add(this.buttonChangePackDetails);
             this.Controls.Add(this.buttonChangePackEmblem);
@@ -626,5 +661,8 @@
         private ListView listView2;
         private Button buttonChangePackDetails;
         private Button buttonChangeIconName;
+        private Button buttonCheckUpdates;
+        private Label labelVersion;
+        private Label labelUpdateStatus;
     }
 }

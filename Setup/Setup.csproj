@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net6.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWindowsForms>true</UseWindowsForms>
+    <RootNamespace>StreamDeckIconManager.Setup</RootNamespace>
+    <AssemblyName>StreamDeckIconManagerSetup</AssemblyName>
+    <ApplicationIcon>..\Add Stream Deck Icon\StreamDeckIconManagerLogo.ico</ApplicationIcon>
+    <StartupObject>StreamDeckIconManager.Setup.Program</StartupObject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\shared\ReleaseNaming.cs" Link="ReleaseNaming.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="..\Add Stream Deck Icon\StreamDeckIconManagerLogo.ico" Link="StreamDeckIconManagerLogo.ico" />
+  </ItemGroup>
+
+</Project>

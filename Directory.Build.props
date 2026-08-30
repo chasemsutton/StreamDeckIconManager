@@ -1,0 +1,12 @@
+<Project>
+  <PropertyGroup>
+    <Version>1.1.0.1</Version>
+    <AssemblyVersion>1.1.0.1</AssemblyVersion>
+    <FileVersion>1.1.0.1</FileVersion>
+    <InformationalVersion>1.1.0.1</InformationalVersion>
+    <Product>Stream Deck Icon Manager</Product>
+    <Authors>Sutton Tools</Authors>
+    <Company>Sutton Tools</Company>
+    <RepositoryUrl>https://github.com/chasemsutton/StreamDeckIconManager</RepositoryUrl>
+  </PropertyGroup>
+</Project>
