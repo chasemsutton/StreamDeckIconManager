@@ -17,16 +17,23 @@ internal static class ReleaseNaming
 
     public static string FormatVersion(Version version) => version.ToString();
 
+    /// <summary>Install location. Set SDIM_INSTALL_DIR to test Setup against another folder.</summary>
     public static string InstallDirectory =>
-        Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "Programs",
-            "StreamDeckIconManager");
+        Environment.GetEnvironmentVariable("SDIM_INSTALL_DIR") is { Length: > 0 } overrideDir
+            ? overrideDir
+            : Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "Programs",
+                "StreamDeckIconManager");
 
     public static string InstalledAppPath => Path.Combine(InstallDirectory, AppExeFileName);
 
     public static Uri LatestReleaseApiUri { get; } =
         new($"https://api.github.com/repos/{Owner}/{Repo}/releases/latest");
+
+    /// <summary>Recent releases, newest first, including pre-releases (used by the beta channel).</summary>
+    public static Uri ReleasesApiUri { get; } =
+        new($"https://api.github.com/repos/{Owner}/{Repo}/releases?per_page=30");
 
     public static Uri ReleaseByTagApiUri(string tag) =>
         new($"https://api.github.com/repos/{Owner}/{Repo}/releases/tags/{Uri.EscapeDataString(tag)}");

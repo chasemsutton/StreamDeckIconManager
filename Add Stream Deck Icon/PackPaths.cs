@@ -5,12 +5,20 @@ internal static class PackPaths
     public const string CustomPackPrefix = "zzcustomuser";
     public const string DefaultDescription = "Custom icons for Elgato Stream Deck";
     public const string DefaultAuthor = "Custom User";
-    public const string DefaultManifestTags = "Custom User Icon";
 
+    /// <summary>Where Stream Deck itself keeps installed icon packs (live installs land here).</summary>
+    public static string StreamDeckIconPacksFolder { get; } = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+        "Elgato", "StreamDeck", "IconPacks");
+
+    /// <summary>
+    /// The folder the app reads and writes packs in: Stream Deck's, unless SDIM_ICONPACKS_ROOT
+    /// points the app at a test folder.
+    /// </summary>
     public static string IconPacksRoot { get; } =
-        Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "Elgato", "StreamDeck", "IconPacks");
+        Environment.GetEnvironmentVariable("SDIM_ICONPACKS_ROOT") is { Length: > 0 } overrideRoot
+            ? overrideRoot
+            : StreamDeckIconPacksFolder;
 
     public static string BuildPackFolderName(string packName) =>
         $"{CustomPackPrefix}.{NormalizeKey(packName)}.iconpack.sdIconPack";
@@ -25,14 +33,5 @@ internal static class PackPaths
     {
         var folder = Path.GetFileName(path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
         return folder.StartsWith(CustomPackPrefix, StringComparison.OrdinalIgnoreCase);
-    }
-
-    public static bool IsSupportedImageExtension(string path)
-    {
-        var ext = Path.GetExtension(path);
-        return ext.Equals(".png", StringComparison.OrdinalIgnoreCase)
-            || ext.Equals(".jpg", StringComparison.OrdinalIgnoreCase)
-            || ext.Equals(".jpeg", StringComparison.OrdinalIgnoreCase)
-            || ext.Equals(".gif", StringComparison.OrdinalIgnoreCase);
     }
 }

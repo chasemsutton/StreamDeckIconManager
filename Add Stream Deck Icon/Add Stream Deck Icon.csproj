@@ -12,7 +12,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Content Include="StreamDeckIconManagerLogo.ico" />
+    <!-- Same file as ApplicationIcon, embedded so windows can use the full-resolution icon. -->
+    <EmbeddedResource Include="StreamDeckIconManagerLogo.ico" LogicalName="AppIcon.ico" />
     <Compile Include="..\shared\ReleaseNaming.cs" Link="ReleaseNaming.cs" />
   </ItemGroup>
 
@@ -29,6 +30,16 @@
       <Generator>ResXFileCodeGenerator</Generator>
       <LastGenOutput>Resources.Designer.cs</LastGenOutput>
     </EmbeddedResource>
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Google's gif2webp (see tools\gif2webp\README.md), shipped next to the app. -->
+    <None Include="tools\gif2webp\**" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="SkiaSharp" Version="2.88.8" />
+    <PackageReference Include="Svg.Skia" Version="1.0.0.18" />
   </ItemGroup>
 
 </Project>

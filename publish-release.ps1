@@ -8,11 +8,18 @@
 .EXAMPLE
   .\publish-release.ps1
   .\publish-release.ps1 -Version 1.1.0.1
+  .\publish-release.ps1 -Version 1.2.0.0 -Beta
+
+.NOTES
+  Beta builds are ordinary GitHub releases with "Set as a pre-release" ticked.
+  Only users who picked the Beta update channel in the app are offered them.
+  Keep the tag a plain version number (e.g. 1.2.0.0) so the updater can compare it.
 #>
 param(
     [string]$Version = "",
     [string]$Runtime = "win-x64",
-    [switch]$SkipZip
+    [switch]$SkipZip,
+    [switch]$Beta
 )
 
 $ErrorActionPreference = "Stop"
@@ -88,4 +95,10 @@ Write-Host "  User download : $setupOutPath"
 Write-Host "  Setup payload : $appZipPath"
 Write-Host ""
 Write-Host "Upload BOTH files to a GitHub release tagged '$Version'."
+if ($Beta) {
+    Write-Host "BETA: tick 'Set as a pre-release' on GitHub so only Beta-channel users are offered it." -ForegroundColor Yellow
+    Write-Host "      With the gh CLI: gh release create $Version `"$setupOutPath`" `"$appZipPath`" --prerelease --title `"$Version (beta)`""
+} else {
+    Write-Host "Do NOT mark it as a pre-release; Stable-channel users only see full releases."
+}
 Write-Host "Users only need to download $setupName - it fetches the App.zip automatically."

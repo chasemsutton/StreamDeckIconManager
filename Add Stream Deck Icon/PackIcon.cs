@@ -5,17 +5,26 @@ namespace Add_Stream_Deck_Icon;
 internal sealed class PackIcon
 {
     public int IconNumber { get; set; }
+
+    /// <summary>File name inside the pack's icons folder (or the source path for a queued image).</summary>
     public string Path { get; set; }
+
     public string Name { get; set; }
     public string[] Tags { get; set; }
+
+    /// <summary>The image file exactly as it was read; written back unchanged.</summary>
+    public byte[] Data { get; set; }
+
+    /// <summary>Decoded preview for showing in the app. Never written to disk.</summary>
     public Bitmap Picture { get; set; }
 
-    public PackIcon(int index, string path, string name, string[] tags, Bitmap picture)
+    public PackIcon(int index, string path, string name, string[] tags, byte[] data, Bitmap picture)
     {
         IconNumber = index;
         Path = path;
         Name = name;
         Tags = tags;
+        Data = data;
         Picture = picture;
     }
 
@@ -23,7 +32,8 @@ internal sealed class PackIcon
     {
         var name = System.IO.Path.GetFileNameWithoutExtension(fileName).Replace('_', ' ');
         var tags = name.Split(' ', StringSplitOptions.RemoveEmptyEntries).Append("custom").ToArray();
-        return new PackIcon(0, fileName, name, tags, ImageHelper.LoadBitmap(fileName));
+        var (data, preview) = ImageHelper.Load(fileName);
+        return new PackIcon(0, fileName, name, tags, data, preview);
     }
 
     public IconDto ToDto() => new()

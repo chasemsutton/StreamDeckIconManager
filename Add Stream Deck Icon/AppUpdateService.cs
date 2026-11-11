@@ -18,14 +18,13 @@ internal sealed class AppUpdateService
     public static Version CurrentVersion { get; } = ReadCurrentVersion();
     private static readonly HttpClient Http = CreateClient();
 
-    public async Task<UpdateCheckResult> CheckForUpdateAsync(CancellationToken cancellationToken = default)
+    public async Task<UpdateCheckResult> CheckForUpdateAsync(
+        UpdateChannel channel = UpdateChannel.Stable,
+        CancellationToken cancellationToken = default)
     {
-        using var response = await Http.GetAsync(ReleaseNaming.LatestReleaseApiUri, cancellationToken).ConfigureAwait(false);
-        response.EnsureSuccessStatusCode();
-
-        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-        var release = await JsonSerializer.DeserializeAsync<GitHubRelease>(stream, JsonOptions, cancellationToken)
-            .ConfigureAwait(false);
+        var release = channel == UpdateChannel.Beta
+            ? await GetNewestReleaseAsync(cancellationToken).ConfigureAwait(false)
+            : await GetJsonAsync<GitHubRelease>(ReleaseNaming.LatestReleaseApiUri, cancellationToken).ConfigureAwait(false);
 
         if (release is null || string.IsNullOrWhiteSpace(release.TagName))
             return UpdateCheckResult.Failed("Could not read release information from GitHub.");
@@ -43,10 +42,47 @@ internal sealed class AppUpdateService
         if (!IsTrustedDownloadUrl(asset.BrowserDownloadUrl))
             return UpdateCheckResult.Failed("Release download URL is not from the expected GitHub repository.");
 
-        return UpdateCheckResult.Available(latestVersion, release.TagName, asset.Name, asset.BrowserDownloadUrl, release.HtmlUrl);
+        return UpdateCheckResult.Available(latestVersion, release.TagName, asset.Name, asset.BrowserDownloadUrl, release.HtmlUrl, release.Prerelease);
     }
 
-    public async Task InstallUpdateAsync(
+    /// <summary>Highest-versioned published release, pre-releases included. Drafts are skipped.</summary>
+    private static async Task<GitHubRelease?> GetNewestReleaseAsync(CancellationToken cancellationToken)
+    {
+        var releases = await GetJsonAsync<List<GitHubRelease>>(ReleaseNaming.ReleasesApiUri, cancellationToken).ConfigureAwait(false);
+        return releases?
+            .Where(r => !r.Draft)
+            .Select(r => (Release: r, Ok: TryParseVersion(r.TagName, out var v), Version: v))
+            .Where(x => x.Ok)
+            .OrderByDescending(x => x.Version)
+            .Select(x => x.Release)
+            .FirstOrDefault();
+    }
+
+    private static async Task<T?> GetJsonAsync<T>(Uri uri, CancellationToken cancellationToken)
+    {
+        using var response = await Http.GetAsync(uri, cancellationToken).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+        return await JsonSerializer.DeserializeAsync<T>(stream, JsonOptions, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Starts the downloaded installer and tells it which process to wait for.
+    /// The caller must exit straight after: Setup replaces this app's files.
+    /// </summary>
+    public static void LaunchInstaller(string setupPath)
+    {
+        Process.Start(new ProcessStartInfo
+        {
+            FileName = setupPath,
+            Arguments = $"--wait-pid {Environment.ProcessId}",
+            WorkingDirectory = Path.GetDirectoryName(setupPath)!,
+            UseShellExecute = true
+        });
+    }
+
+    /// <summary>Downloads the update's installer and returns its path. Does not start it.</summary>
+    public async Task<string> DownloadInstallerAsync(
         UpdateCheckResult update,
         IProgress<UpdateProgress>? progress = null,
         CancellationToken cancellationToken = default)
@@ -54,41 +90,81 @@ internal sealed class AppUpdateService
         if (!update.IsUpdateAvailable || string.IsNullOrWhiteSpace(update.DownloadUrl))
             throw new InvalidOperationException("No update is available to install.");
 
-        var workRoot = Path.Combine(Path.GetTempPath(), "StreamDeckIconManager-Update", Guid.NewGuid().ToString("N"));
+        var workRoot = Path.Combine(DownloadsFolder, Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(workRoot);
 
-        var downloadName = update.AssetName ?? ReleaseNaming.SetupFileName(update.LatestVersion ?? CurrentVersion);
-        var downloadPath = Path.Combine(workRoot, downloadName);
+        try
+        {
+            var downloadName = update.AssetName ?? ReleaseNaming.SetupFileName(update.LatestVersion ?? CurrentVersion);
+            var downloadPath = Path.Combine(workRoot, downloadName);
 
-        progress?.Report(new UpdateProgress("Downloading update...", 0));
-        await DownloadFileAsync(update.DownloadUrl, downloadPath, progress, cancellationToken).ConfigureAwait(false);
+            progress?.Report(new UpdateProgress("Downloading update...", 0));
+            await DownloadFileAsync(update.DownloadUrl, downloadPath, progress, cancellationToken).ConfigureAwait(false);
 
-        string setupPath;
-        if (downloadName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
-        {
-            setupPath = downloadPath;
-        }
-        else if (downloadName.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
-        {
-            // Legacy zip releases that contain a setup executable.
-            progress?.Report(new UpdateProgress("Extracting installer...", 90));
-            var extractPath = Path.Combine(workRoot, "extracted");
-            ZipFile.ExtractToDirectory(downloadPath, extractPath);
-            setupPath = FindSetupExecutable(extractPath)
-                ?? throw new FileNotFoundException("Could not find a setup executable in the downloaded update package.");
-        }
-        else
-        {
-            throw new InvalidOperationException($"Unsupported update package type: {downloadName}");
-        }
+            string setupPath;
+            if (downloadName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+            {
+                setupPath = downloadPath;
+            }
+            else if (downloadName.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+            {
+                // Legacy zip releases that contain a setup executable.
+                progress?.Report(new UpdateProgress("Extracting installer...", 90));
+                var extractPath = Path.Combine(workRoot, "extracted");
+                ZipFile.ExtractToDirectory(downloadPath, extractPath);
+                setupPath = FindSetupExecutable(extractPath)
+                    ?? throw new FileNotFoundException("Could not find a setup executable in the downloaded update package.");
+            }
+            else
+            {
+                throw new InvalidOperationException($"Unsupported update package type: {downloadName}");
+            }
 
-        progress?.Report(new UpdateProgress("Launching installer...", 100));
-        Process.Start(new ProcessStartInfo
+            progress?.Report(new UpdateProgress("Download complete.", 100));
+            return setupPath;
+        }
+        catch
         {
-            FileName = setupPath,
-            WorkingDirectory = Path.GetDirectoryName(setupPath)!,
-            UseShellExecute = true
-        });
+            // Cancelled or failed: don't leave a partial installer behind.
+            TryDeleteDirectory(workRoot);
+            throw;
+        }
+    }
+
+    /// <summary>Where downloaded installers go, one subfolder per download.</summary>
+    private static string DownloadsFolder => Path.Combine(Path.GetTempPath(), "StreamDeckIconManager-Update");
+
+    /// <summary>
+    /// Deletes installers from earlier updates (about 70 MB each). Called at startup; an installer
+    /// that's still running is locked and simply left for next time.
+    /// </summary>
+    public static void CleanupOldDownloads()
+    {
+        try
+        {
+            if (!Directory.Exists(DownloadsFolder))
+                return;
+
+            foreach (var dir in Directory.GetDirectories(DownloadsFolder))
+                TryDeleteDirectory(dir);
+        }
+        catch
+        {
+            // Best-effort.
+        }
+    }
+
+    private static void TryDeleteDirectory(string path)
+    {
+        try
+        {
+            if (Directory.Exists(path))
+                Directory.Delete(path, true);
+        }
+        catch
+        {
+            // Locked or already gone.
+        }
     }
 
     private static async Task DownloadFileAsync(
@@ -160,11 +236,16 @@ internal sealed class AppUpdateService
             || uri.Host.Equals("objects.githubusercontent.com", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static bool TryParseVersion(string tag, out Version version)
+    /// <summary>Reads tags such as "1.2.0.1", "v1.2.0.1" or "1.2.0.1-beta".</summary>
+    internal static bool TryParseVersion(string tag, out Version version)
     {
         var cleaned = tag.Trim();
         if (cleaned.StartsWith("v", StringComparison.OrdinalIgnoreCase))
             cleaned = cleaned[1..];
+
+        var suffix = cleaned.IndexOfAny(new[] { '-', '+', ' ' });
+        if (suffix >= 0)
+            cleaned = cleaned[..suffix];
 
         return Version.TryParse(cleaned, out version!);
     }
@@ -204,8 +285,10 @@ internal sealed class UpdateCheckResult
         string? assetName,
         string? downloadUrl,
         string? releasePageUrl,
-        string? errorMessage)
+        string? errorMessage,
+        bool isPrerelease = false)
     {
+        IsPrerelease = isPrerelease;
         Succeeded = succeeded;
         IsUpdateAvailable = isUpdateAvailable;
         IsUpToDate = isUpToDate;
@@ -227,13 +310,17 @@ internal sealed class UpdateCheckResult
     public string? ReleasePageUrl { get; }
     public string? ErrorMessage { get; }
 
+    /// <summary>True when the update is a GitHub pre-release (beta channel).</summary>
+    public bool IsPrerelease { get; }
+
     public static UpdateCheckResult Available(
         Version latestVersion,
         string tagName,
         string assetName,
         string downloadUrl,
-        string? releasePageUrl) =>
-        new(true, true, false, latestVersion, tagName, assetName, downloadUrl, releasePageUrl, null);
+        string? releasePageUrl,
+        bool isPrerelease) =>
+        new(true, true, false, latestVersion, tagName, assetName, downloadUrl, releasePageUrl, null, isPrerelease);
 
     public static UpdateCheckResult UpToDate(Version latestVersion) =>
         new(true, false, true, latestVersion, null, null, null, null, null);
@@ -251,6 +338,12 @@ internal sealed class GitHubRelease
 
     [JsonPropertyName("html_url")]
     public string? HtmlUrl { get; set; }
+
+    [JsonPropertyName("prerelease")]
+    public bool Prerelease { get; set; }
+
+    [JsonPropertyName("draft")]
+    public bool Draft { get; set; }
 
     [JsonPropertyName("assets")]
     public List<GitHubAsset> Assets { get; set; } = new();

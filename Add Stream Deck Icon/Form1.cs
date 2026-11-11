@@ -1,32 +1,64 @@
-using System.IO.Compression;
+using Add_Stream_Deck_Icon.UI;
 
 namespace Add_Stream_Deck_Icon;
 
+/// <summary>
+/// Main window. Layout: app bar (save) on top, pack list on the left, the open pack on the right
+/// (header, icon grid, drop tray), status line at the bottom.
+/// </summary>
 public partial class Form1 : Form
 {
     private readonly List<Manifest> _allPacks = new();
-    private readonly List<PackIcon> _imagesToAdd = new();
-    private readonly List<int> _existingIcons = new();
+    private readonly List<PackIcon> _queue = new();
     private readonly string _streamDeckPacksPath = PackPaths.IconPacksRoot;
+    private readonly AppUpdateService _updater = new();
+    private readonly AppSettings _settings = AppSettings.Load();
 
     private bool _changesMade;
-    private bool _existingPack;
-    private Manifest? _importWaiting;
-    private string? _importWaitingTempPath;
 
-    private readonly AppUpdateService _updater = new();
+    /// <summary>Packs changed since Stream Deck last loaded them (live apply installs these).</summary>
+    private readonly HashSet<Manifest> _pendingPacks = new();
+
+    /// <summary>Packs deleted or renamed since; Stream Deck drops the old ones at its next restart.</summary>
+    private int _pendingRemovals;
     private bool _updateCheckRunning;
+
+    // App bar
+    private ThemedButton _saveButton = null!;
+    private Label _unsavedLabel = null!;
+
+    // Sidebar
+    private PackList _packList = null!;
+    private Label _packCountLabel = null!;
+
+    // Pack view
+    private Panel _packView = null!;
+    private Panel _noPacksView = null!;
+    private KeyImage _emblem = null!;
+    private Label _packName = null!;
+    private Label _packMeta = null!;
+    private Label _packDescription = null!;
+    private Label _iconsHeading = null!;
+    private ThemedButton _selectAllButton = null!;
+    private ThemedButton _editIconsButton = null!;
+    private ThemedButton _deleteIconsButton = null!;
+    private IconGrid _grid = null!;
+    private DropZone _dropZone = null!;
+
+    // Status bar
+    private Label _statusLabel = null!;
+    private ThemedButton _updateButton = null!;
+    private ThemedButton _channelButton = null!;
 
     public Form1()
     {
-        InitializeComponent();
-
-        Text = $"Stream Deck Icon Manager v{AppUpdateService.CurrentVersion}";
-        labelVersion.Text = $"v{AppUpdateService.CurrentVersion}";
+        BuildUi();
 
         if (!Directory.Exists(_streamDeckPacksPath))
         {
-            MessageBox.Show("Could not locate Stream Deck icon pack directory");
+            MessageBox.Show(
+                $"Couldn't find the Stream Deck icon pack folder:\n{_streamDeckPacksPath}\n\nInstall the Elgato Stream Deck app and open it once, then try again.",
+                "Stream Deck not found", MessageBoxButtons.OK, MessageBoxIcon.Error);
             Environment.Exit(0);
             return;
         }
@@ -37,694 +69,1359 @@ public partial class Form1 : Form
                 _allPacks.Add(new Manifest(dir));
         }
 
-        UpdateListBoxText();
-        Shown += async (_, _) => await CheckForUpdatesAsync(silentWhenCurrent: true);
+        RefreshPackList();
+        StartPackWatch();
+        // Installers left from earlier updates (about 70 MB each).
+        AppUpdateService.CleanupOldDownloads();
+        SetStatus(_allPacks.Count switch
+        {
+            0 => "No custom icon packs yet.",
+            1 => "Loaded 1 icon pack from Stream Deck.",
+            var n => $"Loaded {n} icon packs from Stream Deck."
+        });
+        Shown += async (_, _) =>
+        {
+            await CheckExistingGifsAsync();
+            CheckLargeImages();
+            await CheckForUpdatesAsync(silentWhenCurrent: true);
+        };
     }
+
+    #region Layout
+
+    private void BuildUi()
+    {
+        SuspendLayout();
+        AutoScaleDimensions = new SizeF(96F, 96F);
+        AutoScaleMode = AutoScaleMode.Dpi;
+
+        Text = "Stream Deck Icon Manager";
+        Icon = AppIcon.Window;
+        Font = Theme.Body;
+        BackColor = Theme.Window;
+        ForeColor = Theme.Text;
+        ClientSize = new Size(1180, 760);
+        MinimumSize = new Size(940, 620);
+        StartPosition = FormStartPosition.CenterScreen;
+        KeyPreview = true;
+        AllowDrop = true;
+
+        var content = new Panel { Dock = DockStyle.Fill, BackColor = Theme.Window };
+        _packView = BuildPackView();
+        _noPacksView = BuildNoPacksView();
+        content.Controls.Add(_packView);
+        content.Controls.Add(_noPacksView);
+
+        // Dock order: last added docks first, so fill goes in first.
+        Controls.Add(content);
+        Controls.Add(BuildSidebar());
+        Controls.Add(BuildStatusBar());
+
+        WireDragAndDrop(this, content, _packView, _noPacksView, _grid, _dropZone);
+        FormClosing += OnFormClosing;
+
+        ResumeLayout(false);
+        PerformLayout();
+    }
+
+    /// <summary>Save button and its state line, pinned to the bottom of the sidebar.</summary>
+    private Control BuildSaveSection()
+    {
+        var section = new Surface(Theme.Sidebar, Edges.Top)
+        {
+            Dock = DockStyle.Bottom,
+            Height = 92,
+            Padding = new Padding(16, 12, 16, 16)
+        };
+
+        _unsavedLabel = new Label
+        {
+            Text = "All changes saved",
+            ForeColor = Theme.TextFaint,
+            Font = Theme.Small,
+            Dock = DockStyle.Top,
+            Height = 26,
+            TextAlign = ContentAlignment.TopLeft
+        };
+
+        _saveButton = new ThemedButton("Save to Stream Deck", ButtonKind.Secondary, Theme.Glyphs.Save)
+        {
+            AutoSize = false,
+            Dock = DockStyle.Top,
+            Height = 38
+        };
+        _saveButton.Click += (_, _) => SaveToStreamDeck();
+        new ToolTip().SetToolTip(_saveButton, "Save all packs to Stream Deck (Ctrl+S)");
+
+        section.Controls.Add(_saveButton);
+        section.Controls.Add(_unsavedLabel);
+        return section;
+    }
+
+    private Control BuildStatusBar()
+    {
+        var bar = new Surface(Theme.Sidebar, Edges.Top)
+        {
+            Dock = DockStyle.Bottom,
+            Height = 34,
+            Padding = new Padding(16, 1, 10, 0)
+        };
+
+        _statusLabel = new Label
+        {
+            Dock = DockStyle.Fill,
+            ForeColor = Theme.TextMuted,
+            Font = Theme.Small,
+            TextAlign = ContentAlignment.MiddleLeft,
+            AutoEllipsis = true
+        };
+
+        var version = new Label
+        {
+            Text = $"Version {AppUpdateService.CurrentVersion}",
+            ForeColor = Theme.TextFaint,
+            Font = Theme.Small,
+            AutoSize = true,
+            Margin = new Padding(0, 9, 4, 0)
+        };
+
+        _updateButton = new ThemedButton("Check for updates", ButtonKind.Ghost, Theme.Glyphs.Sync)
+        {
+            Font = Theme.Small,
+            Margin = new Padding(0, 1, 0, 0)
+        };
+        _updateButton.Click += async (_, _) => await CheckForUpdatesAsync(silentWhenCurrent: false);
+
+        var right = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Right,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            WrapContents = false,
+            BackColor = Theme.Sidebar
+        };
+        _channelButton = new ThemedButton("", ButtonKind.Ghost, Theme.Glyphs.Settings)
+        {
+            Font = Theme.Small,
+            Margin = new Padding(0, 1, 2, 0)
+        };
+        var channelMenu = BuildChannelMenu();
+        _channelButton.Click += (_, _) => channelMenu.Show(_channelButton, new Point(0, -channelMenu.PreferredSize.Height));
+        new ToolTip().SetToolTip(_channelButton, "Choose which releases Check for updates offers");
+        UpdateChannelButton();
+
+        right.Controls.Add(version);
+        right.Controls.Add(_channelButton);
+        right.Controls.Add(_updateButton);
+
+        bar.Controls.Add(_statusLabel);
+        bar.Controls.Add(right);
+        return bar;
+    }
+
+    private ContextMenuStrip BuildChannelMenu()
+    {
+        var menu = new ContextMenuStrip { Renderer = new DarkMenuRenderer(), ShowImageMargin = false, ShowCheckMargin = true, Font = Theme.Body };
+        var heading = new ToolStripMenuItem("Update channel") { Enabled = false };
+        var stable = new ToolStripMenuItem("Stable (recommended)");
+        var beta = new ToolStripMenuItem("Beta (not recommended)") { Tag = "danger" };
+        stable.Click += async (_, _) => await SetUpdateChannelAsync(UpdateChannel.Stable);
+        beta.Click += async (_, _) => await SetUpdateChannelAsync(UpdateChannel.Beta);
+        menu.Items.AddRange(new ToolStripItem[] { heading, new ToolStripSeparator(), stable, beta });
+        menu.Opening += (_, _) =>
+        {
+            stable.Checked = _settings.UpdateChannel == UpdateChannel.Stable;
+            beta.Checked = _settings.UpdateChannel == UpdateChannel.Beta;
+        };
+        return menu;
+    }
+
+    private void UpdateChannelButton()
+    {
+        var beta = _settings.UpdateChannel == UpdateChannel.Beta;
+        _channelButton.Text = beta ? "Beta channel" : "Stable channel";
+        _channelButton.TextColor = beta ? Theme.Warning : null;
+    }
+
+    private async Task SetUpdateChannelAsync(UpdateChannel channel)
+    {
+        if (channel == _settings.UpdateChannel)
+            return;
+
+        if (channel == UpdateChannel.Beta && MessageBox.Show(this,
+                "Beta releases get new features first, but they're less tested and may have bugs that affect your icon packs.\n\n" +
+                "Export any packs you care about before installing a beta. You can switch back to Stable at any time.\n\n" +
+                "Switch to the beta channel?",
+                "Switch to beta updates", MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2) != DialogResult.Yes)
+            return;
+
+        _settings.UpdateChannel = channel;
+        _settings.Save();
+        UpdateChannelButton();
+
+        if (channel == UpdateChannel.Stable)
+        {
+            SetStatus("Switched to stable updates. If you're on a beta, you'll get the next stable release that's newer than it.");
+            await CheckForUpdatesAsync(silentWhenCurrent: true);
+        }
+        else
+        {
+            SetStatus("Switched to beta updates.", Theme.Warning);
+            await CheckForUpdatesAsync(silentWhenCurrent: false);
+        }
+    }
+
+    private Control BuildSidebar()
+    {
+        var sidebar = new Surface(Theme.Sidebar, Edges.Right)
+        {
+            Dock = DockStyle.Left,
+            Width = 272,
+            Padding = new Padding(0, 0, 1, 0)
+        };
+
+        var header = new Panel { Dock = DockStyle.Top, Height = 52, BackColor = Theme.Sidebar };
+        header.Controls.Add(new Label
+        {
+            Text = "ICON PACKS",
+            Font = Theme.Caption,
+            ForeColor = Theme.TextMuted,
+            AutoSize = true,
+            Location = new Point(20, 22)
+        });
+        _packCountLabel = new Label
+        {
+            Font = Theme.Caption,
+            ForeColor = Theme.TextFaint,
+            AutoSize = true,
+            Location = new Point(100, 22)
+        };
+        header.Controls.Add(_packCountLabel);
+
+        _packList = new PackList { Dock = DockStyle.Fill };
+        _packList.RowData = i => (_allPacks[i].Emblem, _allPacks[i].Name, _allPacks[i].Icons.Count);
+        _packList.SelectedIndexChanged += (_, _) => ShowSelectedPack();
+
+        var footer = new Panel { Dock = DockStyle.Bottom, Height = 104, Padding = new Padding(16, 12, 16, 16), BackColor = Theme.Sidebar };
+        var newPack = new ThemedButton("New pack", ButtonKind.Secondary, Theme.Glyphs.Add) { AutoSize = false, Dock = DockStyle.Top, Height = 36 };
+        var import = new ThemedButton("Import pack", ButtonKind.Ghost, Theme.Glyphs.Import) { AutoSize = false, Dock = DockStyle.Top, Height = 36 };
+        newPack.Click += (_, _) => CreatePack();
+        import.Click += (_, _) => ImportPack();
+        footer.Controls.Add(import);
+        footer.Controls.Add(new Panel { Dock = DockStyle.Top, Height = 8, BackColor = Theme.Sidebar });
+        footer.Controls.Add(newPack);
+
+        // Later additions dock first: header on top, save section at the very bottom, then the
+        // pack buttons above it, and the list fills what's left.
+        sidebar.Controls.Add(_packList);
+        sidebar.Controls.Add(footer);
+        sidebar.Controls.Add(BuildSaveSection());
+        sidebar.Controls.Add(header);
+        return sidebar;
+    }
+
+    private Panel BuildPackView()
+    {
+        var view = new Panel { Dock = DockStyle.Fill, BackColor = Theme.Window, Padding = new Padding(32, 26, 32, 20) };
+
+        // Header: emblem, name, details, pack actions
+        var header = new TableLayoutPanel
+        {
+            Dock = DockStyle.Top,
+            Height = 128,
+            ColumnCount = 2,
+            RowCount = 1,
+            BackColor = Theme.Window
+        };
+        header.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 120));
+        header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+
+        _emblem = new KeyImage
+        {
+            Size = new Size(100, 100),
+            CornerRadius = 16,
+            HoverGlyph = Theme.Glyphs.Picture,
+            Cursor = Cursors.Hand,
+            Margin = new Padding(0, 2, 0, 0)
+        };
+        _emblem.Click += (_, _) => ChangeEmblem();
+        new ToolTip().SetToolTip(_emblem, "Change the pack emblem shown in the Stream Deck icon library");
+
+        var details = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 4, Margin = Padding.Empty, BackColor = Theme.Window };
+        details.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        for (var i = 0; i < 4; i++)
+            details.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+
+        _packName = new Label { Font = Theme.Title, ForeColor = Theme.Text, AutoEllipsis = true, Dock = DockStyle.Fill, Height = 40, Margin = Padding.Empty, UseMnemonic = false };
+        _packMeta = new Label { Font = Theme.Body, ForeColor = Theme.TextMuted, AutoEllipsis = true, Dock = DockStyle.Fill, Height = 22, Margin = Padding.Empty, UseMnemonic = false };
+        _packDescription = new Label { Font = Theme.Body, ForeColor = Theme.TextFaint, AutoEllipsis = true, Dock = DockStyle.Fill, Height = 22, Margin = Padding.Empty, UseMnemonic = false };
+
+        var packActions = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Margin = new Padding(0, 10, 0, 0), BackColor = Theme.Window };
+        var edit = new ThemedButton("Edit details", ButtonKind.Secondary, Theme.Glyphs.Edit);
+        var emblem = new ThemedButton("Change emblem", ButtonKind.Secondary, Theme.Glyphs.Picture);
+        var export = new ThemedButton("Export", ButtonKind.Secondary, Theme.Glyphs.Export);
+        new ToolTip().SetToolTip(export, "Save as a .streamDeckIconPack file. Anyone with Stream Deck can double-click it to install the pack, with or without this app.");
+        var delete = new ThemedButton("Delete pack", ButtonKind.Danger, Theme.Glyphs.Delete);
+        edit.Click += (_, _) => EditPackDetails();
+        emblem.Click += (_, _) => ChangeEmblem();
+        export.Click += (_, _) => ExportPack();
+        delete.Click += (_, _) => DeletePack();
+        packActions.Controls.AddRange(new Control[] { edit, emblem, export, delete });
+
+        details.Controls.Add(_packName, 0, 0);
+        details.Controls.Add(_packMeta, 0, 1);
+        details.Controls.Add(_packDescription, 0, 2);
+        details.Controls.Add(packActions, 0, 3);
+
+        header.Controls.Add(_emblem, 0, 0);
+        header.Controls.Add(details, 1, 0);
+
+        // Toolbar above the grid
+        var toolbar = new Panel { Dock = DockStyle.Top, Height = 52, BackColor = Theme.Window, Padding = new Padding(0, 10, 0, 8) };
+        _iconsHeading = new Label { Dock = DockStyle.Fill, Font = Theme.BodyStrong, ForeColor = Theme.Text, TextAlign = ContentAlignment.MiddleLeft, UseMnemonic = false };
+
+        _selectAllButton = new ThemedButton("Select all", ButtonKind.Ghost);
+        _editIconsButton = new ThemedButton("Name & tags", ButtonKind.Secondary, Theme.Glyphs.Tag);
+        _deleteIconsButton = new ThemedButton("Delete", ButtonKind.Danger, Theme.Glyphs.Delete) { Margin = Padding.Empty };
+        _selectAllButton.Click += (_, _) => { _grid.SelectAll(); _grid.Focus(); };
+        _editIconsButton.Click += (_, _) => EditSelectedIcons();
+        _deleteIconsButton.Click += (_, _) => DeleteSelectedIcons();
+
+        var iconActions = new FlowLayoutPanel { Dock = DockStyle.Right, AutoSize = true, WrapContents = false, BackColor = Theme.Window };
+        iconActions.Controls.AddRange(new Control[] { _selectAllButton, _editIconsButton, _deleteIconsButton });
+        toolbar.Controls.Add(_iconsHeading);
+        toolbar.Controls.Add(iconActions);
+
+        // The grid sits on a plate, like the face of the deck.
+        var plate = new Surface(Theme.Sidebar) { Dock = DockStyle.Fill, Radius = 14, Padding = new Padding(6) };
+        _grid = new IconGrid
+        {
+            Dock = DockStyle.Fill,
+            BackColor = Theme.Sidebar,
+            EmptyTitle = "This pack has no icons yet",
+            EmptyBody = "Drop images anywhere in this window, or click the tray below to choose files."
+        };
+        _grid.SelectionChanged += (_, _) => UpdateIconActions();
+        _grid.ItemActivated += (_, _) => EditSelectedIcons();
+        _grid.DeleteRequested += (_, _) => DeleteSelectedIcons();
+        _grid.ContextMenuStrip = BuildGridMenu();
+        plate.Controls.Add(_grid);
+
+        var trayHost = new Panel { Dock = DockStyle.Bottom, Height = 108, Padding = new Padding(0, 16, 0, 0), BackColor = Theme.Window };
+        _dropZone = new DropZone { Dock = DockStyle.Fill };
+        _dropZone.BrowseRequested += (_, _) => BrowseForImages();
+        _dropZone.AddButton.Click += (_, _) => AddQueuedIcons();
+        _dropZone.ClearButton.Click += (_, _) => ClearQueue();
+        trayHost.Controls.Add(_dropZone);
+
+        view.Controls.Add(plate);
+        view.Controls.Add(trayHost);
+        view.Controls.Add(toolbar);
+        view.Controls.Add(header);
+        return view;
+    }
+
+    private ContextMenuStrip BuildGridMenu()
+    {
+        var menu = new ContextMenuStrip { Renderer = new DarkMenuRenderer(), ShowImageMargin = false, Font = Theme.Body };
+        var edit = new ToolStripMenuItem("Edit name and tags", null, (_, _) => EditSelectedIcons()) { ShortcutKeyDisplayString = "Enter" };
+        var selectAll = new ToolStripMenuItem("Select all", null, (_, _) => _grid.SelectAll()) { ShortcutKeyDisplayString = "Ctrl+A" };
+        var delete = new ToolStripMenuItem("Delete", null, (_, _) => DeleteSelectedIcons()) { ShortcutKeyDisplayString = "Del", Tag = "danger" };
+        menu.Items.AddRange(new ToolStripItem[] { edit, selectAll, new ToolStripSeparator(), delete });
+        menu.Opening += (_, e) =>
+        {
+            var any = _grid.SelectedIndices.Count > 0;
+            edit.Enabled = any;
+            delete.Enabled = any;
+            if (SelectedPack is null || SelectedPack.Icons.Count == 0)
+                e.Cancel = true;
+        };
+        return menu;
+    }
+
+    private Panel BuildNoPacksView()
+    {
+        var view = new Panel { Dock = DockStyle.Fill, BackColor = Theme.Window, Visible = false };
+
+        var stack = new TableLayoutPanel
+        {
+            ColumnCount = 1,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            Anchor = AnchorStyles.None,
+            BackColor = Theme.Window
+        };
+
+        var keys = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Anchor = AnchorStyles.None, Margin = new Padding(0, 0, 0, 20), BackColor = Theme.Window };
+        for (var i = 0; i < 3; i++)
+            keys.Controls.Add(new KeyImage { Size = new Size(64, 64), CornerRadius = 11, Margin = new Padding(6, 0, 6, 0), Image = i == 1 ? AppIcon.Bitmap(64) : null });
+
+        var title = new Label { Text = "Make your first icon pack", Font = Theme.DialogTitle, ForeColor = Theme.Text, AutoSize = true, Anchor = AnchorStyles.None, Margin = new Padding(0, 0, 0, 6) };
+        var body = new Label
+        {
+            Text = "A pack is a named set of icons that appears in the Stream Deck icon library. Create one, then drop your images into it.",
+            Font = Theme.Body,
+            ForeColor = Theme.TextMuted,
+            AutoSize = true,
+            MaximumSize = new Size(420, 0),
+            TextAlign = ContentAlignment.MiddleCenter,
+            Anchor = AnchorStyles.None,
+            Margin = new Padding(0, 0, 0, 20)
+        };
+
+        var buttons = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Anchor = AnchorStyles.None, BackColor = Theme.Window };
+        var create = new ThemedButton("New pack", ButtonKind.Primary, Theme.Glyphs.Add);
+        var import = new ThemedButton("Import a pack", ButtonKind.Secondary, Theme.Glyphs.Import) { Margin = Padding.Empty };
+        create.Click += (_, _) => CreatePack();
+        import.Click += (_, _) => ImportPack();
+        buttons.Controls.Add(create);
+        buttons.Controls.Add(import);
+
+        stack.Controls.Add(keys, 0, 0);
+        stack.Controls.Add(title, 0, 1);
+        stack.Controls.Add(body, 0, 2);
+        stack.Controls.Add(buttons, 0, 3);
+
+        view.Controls.Add(stack);
+        view.Resize += (_, _) => stack.Location = new Point((view.Width - stack.Width) / 2, (view.Height - stack.Height) / 2 - 20);
+        return view;
+    }
+
+    protected override void OnHandleCreated(EventArgs e)
+    {
+        base.OnHandleCreated(e);
+        Native.UseDarkTitleBar(this);
+        Native.SetCaptionColors(this, Theme.Sidebar, Theme.Text);
+    }
+
+    #endregion
+
+    #region State and refresh
 
     private Manifest? SelectedPack =>
-        listBox1.SelectedIndex >= 0 && listBox1.SelectedIndex < _allPacks.Count
-            ? _allPacks[listBox1.SelectedIndex]
+        _packList.SelectedIndex >= 0 && _packList.SelectedIndex < _allPacks.Count
+            ? _allPacks[_packList.SelectedIndex]
             : null;
 
-    private bool EnsurePackSelected()
+    private bool ChangesMade
     {
-        if (SelectedPack is not null)
-            return true;
-
-        MessageBox.Show("Create a pack first!");
-        return false;
+        get => _changesMade;
+        set
+        {
+            _changesMade = value;
+            _unsavedLabel.Text = value ? "● Unsaved changes" : "All changes saved";
+            _unsavedLabel.ForeColor = value ? Theme.Warning : Theme.TextFaint;
+            _saveButton.Kind = value ? ButtonKind.Primary : ButtonKind.Secondary;
+        }
     }
 
-    private void AddIconWithDefaultMetadata(string fileName) =>
-        _imagesToAdd.Add(PackIcon.FromFile(fileName));
+    private void MarkChanged(Manifest pack, string status)
+    {
+        _pendingPacks.Add(pack);
+        ChangesMade = true;
+        SetStatus(status + " Save to Stream Deck when you're done.");
+    }
 
-    private void buttonBrowse_Click(object sender, EventArgs e)
+    private void SetStatus(string text, Color? color = null)
+    {
+        _statusLabel.Text = text;
+        _statusLabel.ForeColor = color ?? Theme.TextMuted;
+    }
+
+    private void RefreshPackList(Manifest? select = null)
+    {
+        var target = select ?? SelectedPack;
+        _packList.BeginUpdate();
+        _packList.Items.Clear();
+        foreach (var pack in _allPacks)
+            _packList.Items.Add(pack.Name);
+        _packList.EndUpdate();
+
+        _packCountLabel.Text = _allPacks.Count.ToString();
+        _packCountLabel.Left = _packCountLabel.Parent!.Controls[0].Right + 4;
+
+        var hasPacks = _allPacks.Count > 0;
+        _packView.Visible = hasPacks;
+        _noPacksView.Visible = !hasPacks;
+
+        if (hasPacks)
+        {
+            var index = target is null ? 0 : Math.Max(0, _allPacks.IndexOf(target));
+            _packList.SelectedIndex = index;
+        }
+
+        ShowSelectedPack();
+    }
+
+    private void ShowSelectedPack(bool keepSelection = false)
+    {
+        var pack = SelectedPack;
+        if (pack is null)
+        {
+            _grid.SetItems(Array.Empty<IconTile>());
+            UpdateQueueTray();
+            return;
+        }
+
+        _packName.Text = pack.Name;
+        var count = pack.Icons.Count == 1 ? "1 icon" : $"{pack.Icons.Count} icons";
+        _packMeta.Text = $"{count}  ·  by {pack.Author}";
+        _packDescription.Text = pack.Description;
+        _emblem.Image = pack.Emblem;
+
+        _grid.SetItems(pack.Icons.Select(i => new IconTile(
+            i.Picture,
+            i.Name,
+            $"{i.Name}\nTags: {IconDetailsDialog.FormatTags(i.Tags)}",
+            i.Data,
+            Path.GetExtension(i.Path))), keepSelection);
+        _packList.Invalidate();
+        UpdateQueueTray();
+        UpdateIconActions();
+    }
+
+    private void UpdateIconActions()
+    {
+        var pack = SelectedPack;
+        var total = pack?.Icons.Count ?? 0;
+        var selected = _grid.SelectedIndices.Count;
+
+        _iconsHeading.Text = selected > 0
+            ? $"{selected} of {total} selected"
+            : total == 1 ? "1 icon" : $"{total} icons";
+        _iconsHeading.ForeColor = selected > 0 ? Theme.Accent : Theme.Text;
+
+        _selectAllButton.Visible = total > 0 && selected < total;
+        _editIconsButton.Enabled = selected > 0;
+        _deleteIconsButton.Enabled = selected > 0;
+        _editIconsButton.Text = selected > 1 ? $"Name & tags ({selected})" : "Name & tags";
+    }
+
+    private void UpdateQueueTray() =>
+        _dropZone.SetQueue(_queue.Select(q => (Image)q.Picture).ToList(), SelectedPack?.Name ?? "");
+
+    #endregion
+
+    #region Adding icons
+
+    private void BrowseForImages()
     {
         using var dialog = new OpenFileDialog
         {
+            Title = "Choose images for your icons",
             Multiselect = true,
-            Filter = "Image files (*.jpg;*.png;*.gif)|*.jpg;*.jpeg;*.png;*.gif"
+            Filter = ImageHelper.FileFilter
         };
 
-        if (dialog.ShowDialog() != DialogResult.OK)
-            return;
-
-        foreach (var fileName in dialog.FileNames)
-            AddIconWithDefaultMetadata(fileName);
-
-        ListNewIcons();
-        label5.Visible = false;
+        if (dialog.ShowDialog(this) == DialogResult.OK)
+            QueueImages(dialog.FileNames);
     }
 
-    private void textBox1_DragOver(object sender, DragEventArgs e) =>
-        e.Effect = e.Data?.GetDataPresent(DataFormats.FileDrop) == true
-            ? DragDropEffects.Link
-            : DragDropEffects.None;
-
-    private void textBox1_DragDrop(object sender, DragEventArgs e)
+    private void QueueImages(IEnumerable<string> files)
     {
-        if (e.Data?.GetData(DataFormats.FileDrop) is not string[] droppedFiles)
-            return;
-
-        var addedFiles = new List<string>();
-        foreach (var file in droppedFiles)
+        var added = 0;
+        var skipped = 0;
+        foreach (var file in files)
         {
-            if (PackPaths.IsSupportedImageExtension(file))
-                addedFiles.Add(file);
-            else
-                MessageBox.Show("Must Be PNG or JPG File Format");
-        }
-
-        if (addedFiles.Count == 0)
-            return;
-
-        foreach (var fileName in addedFiles)
-            AddIconWithDefaultMetadata(fileName);
-
-        ListNewIcons();
-        label5.Visible = false;
-    }
-
-    private void buttonAddIcons_Click(object sender, EventArgs e)
-    {
-        if (_imagesToAdd.Count == 0)
-        {
-            MessageBox.Show("You don't have any files selected.", "Error");
-            return;
-        }
-
-        if (!EnsurePackSelected())
-            return;
-
-        AddIconsVisible(true);
-        AskForIconInfo(_imagesToAdd[0]);
-    }
-
-    private void buttonOK_Click(object sender, EventArgs e)
-    {
-        var pack = SelectedPack;
-        if (pack is null)
-            return;
-
-        if (_existingIcons.Count > 0)
-        {
-            ApplyIconInfo(pack.Icons[_existingIcons[0]]);
-            _existingIcons.RemoveAt(0);
-
-            if (_existingIcons.Count > 0)
+            if (!ImageHelper.IsSupported(file))
             {
-                var next = pack.Icons[_existingIcons[0]];
-                pictureBox1.Image = next.Picture;
-                textBox3.Text = next.Name;
-                textBox4.Text = string.Join(',', next.Tags);
-                textBox3.Focus();
-            }
-            else
-            {
-                AddIconsVisible(false);
-                _existingIcons.Clear();
-                StartOver(false);
-                ListExistingIcons();
-            }
-
-            return;
-        }
-
-        ApplyIconInfo(_imagesToAdd[0]);
-        _imagesToAdd.RemoveAt(0);
-
-        if (_imagesToAdd.Count > 0)
-        {
-            AskForIconInfo(_imagesToAdd[0]);
-            textBox3.Focus();
-        }
-        else
-        {
-            AddIconsVisible(false);
-            StartOver(true);
-        }
-    }
-
-    private void buttonSkip_Click(object sender, EventArgs e)
-    {
-        textBox3.Clear();
-        textBox4.Clear();
-
-        while (_imagesToAdd.Count > 0)
-        {
-            ApplyIconInfo(_imagesToAdd[0]);
-            _imagesToAdd.RemoveAt(0);
-        }
-
-        AddIconsVisible(false);
-        StartOver(true);
-    }
-
-    private void buttonDeleteAll_Click(object sender, EventArgs e)
-    {
-        var pack = SelectedPack;
-        if (pack is null)
-            return;
-
-        if (MessageBox.Show(
-                "Are you sure you want to DELETE ALL ICONS from pack:" + pack.Name,
-                "WARNING",
-                MessageBoxButtons.YesNoCancel) != DialogResult.Yes)
-            return;
-
-        _changesMade = true;
-        foreach (var icon in pack.Icons)
-            icon.Picture.Dispose();
-        pack.Icons.Clear();
-        ListExistingIcons();
-    }
-
-    private void listBox1_SelectedIndexChanged(object sender, EventArgs e) => ListExistingIcons();
-
-    private void AskForIconInfo(PackIcon picture)
-    {
-        pictureBox1.Image = picture.Picture;
-        textBox3.Clear();
-        textBox4.Clear();
-        textBox3.Focus();
-    }
-
-    private void ApplyIconInfo(PackIcon picture)
-    {
-        var pack = SelectedPack;
-        if (pack is null)
-            return;
-
-        var name = string.IsNullOrEmpty(textBox3.Text) ? picture.Name : textBox3.Text;
-        var tags = string.IsNullOrEmpty(textBox4.Text)
-            ? picture.Tags
-            : ("custom," + textBox4.Text).Split(',')
-                .Select(t => t.Trim())
-                .Where(t => t.Length > 0)
-                .ToArray();
-
-        if (_existingIcons.Count == 0)
-            pack.AddIcon(name, tags, picture.Picture);
-        else
-        {
-            pack.Icons[_existingIcons[0]].Name = name;
-            pack.Icons[_existingIcons[0]].Tags = tags;
-        }
-
-        _changesMade = true;
-        textBox3.Clear();
-        textBox4.Clear();
-    }
-
-    private void AddIconsVisible(bool enabled)
-    {
-        listView2.Visible = !enabled;
-        textBox3.Visible = enabled;
-        textBox4.Visible = enabled;
-        buttonBrowse.Visible = !enabled;
-        buttonAddIcons.Visible = !enabled;
-        buttonOK.Visible = enabled;
-        buttonSkip.Visible = enabled;
-        label1.Visible = enabled;
-        label2.Visible = enabled;
-        label3.Visible = enabled;
-        pictureBox1.Visible = enabled;
-        DefaultControlsEnabled(!enabled);
-    }
-
-    public void StartOver(bool newIcons)
-    {
-        if (newIcons)
-            _imagesToAdd.Clear();
-
-        listView2.Items.Clear();
-        textBox3.Clear();
-        textBox4.Clear();
-        label5.Visible = true;
-        pictureBox1.Image = null;
-        ListExistingIcons();
-        MessageBox.Show("Done.");
-    }
-
-    private void UpdateListBoxText()
-    {
-        listBox1.Items.Clear();
-        foreach (var manifest in _allPacks)
-            listBox1.Items.Add(manifest.Name);
-
-        if (listBox1.Items.Count > 0)
-            listBox1.SelectedIndex = 0;
-    }
-
-    public void ListExistingIcons()
-    {
-        listView1.Items.Clear();
-        var pack = SelectedPack;
-        if (pack is null)
-            return;
-
-        listView1.View = View.LargeIcon;
-        var imageList = new ImageList { ImageSize = new Size(60, 60) };
-
-        for (var i = 0; i < pack.Icons.Count; i++)
-        {
-            var icon = pack.Icons[i];
-            imageList.Images.Add(icon.Picture);
-            listView1.Items.Add(new ListViewItem
-            {
-                ImageIndex = i,
-                Text = icon.Name,
-                Tag = icon.Tags
-            });
-        }
-
-        listView1.LargeImageList = imageList;
-        pictureBox2.Image = pack.Emblem;
-    }
-
-    public void ListNewIcons()
-    {
-        listView2.Items.Clear();
-        listView2.View = View.LargeIcon;
-        var imageList = new ImageList { ImageSize = new Size(60, 60) };
-
-        for (var i = 0; i < _imagesToAdd.Count; i++)
-        {
-            imageList.Images.Add(_imagesToAdd[i].Picture);
-            listView2.Items.Add(new ListViewItem
-            {
-                ImageIndex = i,
-                Text = "Import",
-                Tag = "Import"
-            });
-        }
-
-        listView2.LargeImageList = imageList;
-    }
-
-    private void SaveAllPacks()
-    {
-        foreach (var manifest in _allPacks)
-            manifest.SaveManifest();
-    }
-
-    private void buttonSave_Click(object sender, EventArgs e)
-    {
-        if (_allPacks.Count > 0)
-            SaveAllPacks();
-
-        MessageBox.Show("Done. Restart Stream Deck for changes to take effect!");
-        _changesMade = false;
-        Close();
-    }
-
-    private void Form1_FormClosing(object sender, FormClosingEventArgs e)
-    {
-        _importWaiting?.DisposeAllImages();
-        CleanupTempIconPacks();
-
-        if (!_changesMade)
-            return;
-
-        if (MessageBox.Show(
-                "Would you like changes saved to stream deck before exiting?",
-                "WARNING",
-                MessageBoxButtons.YesNo) != DialogResult.Yes)
-            return;
-
-        SaveAllPacks();
-        MessageBox.Show("Done. Restart Stream Deck for changes to take effect!");
-        Environment.Exit(0);
-    }
-
-    private static void CleanupTempIconPacks()
-    {
-        foreach (var dir in Directory.GetDirectories(Path.GetTempPath()))
-        {
-            if (!dir.Contains(".sdIconPack", StringComparison.OrdinalIgnoreCase))
+                skipped++;
                 continue;
+            }
 
             try
             {
-                new DirectoryInfo(dir).Delete(true);
+                _queue.Add(PackIcon.FromFile(file));
+                added++;
             }
             catch
             {
-                // Best-effort cleanup of temp extract folders.
+                skipped++;
             }
         }
+
+        UpdateQueueTray();
+
+        if (skipped > 0)
+            SetStatus($"Skipped {skipped} {(skipped == 1 ? "file" : "files")} that {(skipped == 1 ? "isn't" : "aren't")} a readable {ImageHelper.FormatList} image.", Theme.Warning);
+        else if (added > 0)
+            SetStatus($"{_queue.Count} {(_queue.Count == 1 ? "image" : "images")} ready. Click Add to name them and put them in the pack.");
     }
 
-    private void buttonNewPack_Click(object sender, EventArgs e)
-    {
-        NewPackControlsVisible(true);
-        _changesMade = true;
-    }
-
-    private void buttonDeletePack_Click(object sender, EventArgs e)
+    private async void AddQueuedIcons()
     {
         var pack = SelectedPack;
-        if (!EnsurePackSelected() || pack is null)
+        if (pack is null || _queue.Count == 0)
             return;
 
-        if (MessageBox.Show(
-                "Are you sure you want to delete the entire icon pack named:" + pack.Name + "?",
-                "WARNING",
-                MessageBoxButtons.YesNo) != DialogResult.Yes)
-            return;
-
-        _changesMade = true;
-        var path = pack.IconPackPath;
-        pack.DisposeAllImages();
-        new DirectoryInfo(path).Delete(true);
-        _allPacks.RemoveAt(listBox1.SelectedIndex);
-        UpdateListBoxText();
-    }
-
-    private void buttonImport_Click(object sender, EventArgs e)
-    {
-        using var ofd = new OpenFileDialog
+        var drafts = _queue.Select(q => new IconDraft(q.Picture, q.Name, q.Tags, q.Data, Path.GetExtension(q.Path))).ToList();
+        var oversized = _queue.Count(q => IconResizer.IsOversized(q.Data, Path.GetExtension(q.Path)));
+        using (var dialog = new IconDetailsDialog(drafts, pack.Name, editing: false, oversized, _settings.KeepFullSizeImages))
         {
-            Filter = "zip archive (*.zip)|*.zip",
-            RestoreDirectory = true
-        };
-
-        if (ofd.ShowDialog() != DialogResult.OK)
-            return;
-
-        _changesMade = true;
-        ZipFile.ExtractToDirectory(ofd.FileName, Path.GetTempPath(), overwriteFiles: true);
-
-        foreach (var dir in Directory.GetDirectories(Path.GetTempPath()))
-        {
-            if (!dir.Contains(".sdIconPack", StringComparison.OrdinalIgnoreCase))
-                continue;
-
-            _importWaiting = new Manifest(dir);
-            _importWaitingTempPath = dir;
-
-            if (PackNameExists(_importWaiting.Name))
-            {
-                BadNameControlsVisible(true);
-                label7.Text = _importWaiting.Name;
-                MessageBox.Show("Pack Name Already Exists");
-                textBox5.Clear();
-                textBox5.Focus();
+            if (dialog.ShowDialog(this) != DialogResult.OK)
                 return;
+
+            if (oversized > 0 && dialog.KeepFullSize != _settings.KeepFullSizeImages)
+            {
+                _settings.KeepFullSizeImages = dialog.KeepFullSize;
+                _settings.Save();
             }
-
-            FinishImport(_importWaiting, _importWaitingTempPath);
-            return;
-        }
-    }
-
-    private void TestNewName()
-    {
-        if (_importWaiting is null || _importWaitingTempPath is null)
-            return;
-
-        _importWaiting.ChangePackName(textBox5.Text);
-
-        if (PackNameExists(_importWaiting.Name))
-        {
-            BadNameControlsVisible(true);
-            label7.Text = _importWaiting.Name;
-            MessageBox.Show("Pack Name Already Exists");
-            textBox5.Clear();
-            textBox5.Focus();
-            return;
         }
 
-        textBox5.Clear();
-        BadNameControlsVisible(false);
-        label7.Text = "";
-        FinishImport(_importWaiting, _importWaitingTempPath);
+        // Resize first: an oversized animated GIF comes out as a 144 px animated WEBP, so it
+        // doesn't need converting afterwards.
+        var resized = await FitImagesAsync(_queue);
+        var converted = await ConvertGifsAsync(_queue);
+
+        for (var i = 0; i < drafts.Count; i++)
+            pack.AddIcon(drafts[i].Name, drafts[i].Tags, _queue[i]);
+
+        var count = _queue.Count;
+        _queue.Clear();
+        ShowSelectedPack();
+        MarkChanged(pack, $"Added {count} {(count == 1 ? "icon" : "icons")} to {pack.Name}{ProcessingNote(resized, converted)}.");
     }
 
-    private void FinishImport(Manifest import, string tempPath)
+    /// <summary>
+    /// Scales images larger than Stream Deck's 144 px icon size down to fit, unless the user chose
+    /// to keep full-size images. Animations keep every frame and its timing. Images that can't be
+    /// resized are left as they are. Returns how many were resized.
+    /// </summary>
+    private async Task<int> FitImagesAsync(IReadOnlyList<PackIcon> icons)
     {
-        import.NewPackPath(_streamDeckPacksPath);
-        import.SaveManifest();
-        _allPacks.Add(new Manifest(import.IconPackPath));
-        import.DisposeAllImages();
-        _importWaiting = null;
-        _importWaitingTempPath = null;
+        if (_settings.KeepFullSizeImages)
+            return 0;
 
+        var large = icons.Where(i => IconResizer.IsOversized(i.Data, Path.GetExtension(i.Path))).ToList();
+        if (large.Count == 0)
+            return 0;
+
+        SetStatus(large.Count == 1
+            ? $"Scaling 1 large image down to {IconResizer.TargetSize} px..."
+            : $"Scaling {large.Count} large images down to {IconResizer.TargetSize} px...");
+        UseWaitCursor = true;
+        Enabled = false;
+        var oldPictures = new List<Bitmap>();
+        var resized = 0;
         try
         {
-            new DirectoryInfo(tempPath).Delete(true);
-        }
-        catch
-        {
-            // Temp folder cleanup is best-effort.
-        }
-
-        UpdateListBoxText();
-    }
-
-    private bool PackNameExists(string name, Manifest? except = null) =>
-        _allPacks.Any(m => !ReferenceEquals(m, except) && PackPaths.NamesConflict(m.Name, name));
-
-    private void buttonExport_Click(object sender, EventArgs e)
-    {
-        var pack = SelectedPack;
-        if (!EnsurePackSelected() || pack is null)
-            return;
-
-        using var saveDialog = new SaveFileDialog
-        {
-            Filter = "zip archive (*.zip)|*.zip",
-            RestoreDirectory = true
-        };
-
-        if (saveDialog.ShowDialog() == DialogResult.OK)
-            ZipFile.CreateFromDirectory(pack.IconPackPath, saveDialog.FileName, CompressionLevel.Optimal, includeBaseDirectory: true);
-    }
-
-    private void buttonDeleteSelectedIcons_Click(object sender, EventArgs e)
-    {
-        var pack = SelectedPack;
-        if (!EnsurePackSelected() || pack is null)
-            return;
-
-        _changesMade = true;
-        foreach (var index in listView1.SelectedIndices.Cast<int>().OrderByDescending(i => i))
-            pack.RemoveIcon(index);
-
-        ListExistingIcons();
-    }
-
-    private void buttonbadNameOK_Click(object sender, EventArgs e) => TestNewName();
-
-    private void textBox4_KeyPress(object sender, KeyPressEventArgs e) =>
-        InputFilters.LettersDigitsSpacesCommas(sender, e);
-
-    private void textBox3_KeyPress(object sender, KeyPressEventArgs e) =>
-        InputFilters.LettersDigitsSpaces(sender, e);
-
-    private void textBox5_KeyPress(object sender, KeyPressEventArgs e) =>
-        InputFilters.LettersDigitsSpaces(sender, e);
-
-    private void textBox6_KeyPress(object sender, KeyPressEventArgs e) =>
-        InputFilters.LettersDigitsSpaces(sender, e);
-
-    private void textBox7_KeyPress(object sender, KeyPressEventArgs e) =>
-        InputFilters.LettersDigitsSpaces(sender, e);
-
-    private void textBox8_KeyPress(object sender, KeyPressEventArgs e) =>
-        InputFilters.LettersSpaces(sender, e);
-
-    private void DefaultControlsEnabled(bool enabled)
-    {
-        buttonAddIcons.Enabled = enabled;
-        buttonBrowse.Enabled = enabled;
-        buttonChangePackEmblem.Enabled = enabled;
-        buttonDeleteAll.Enabled = enabled;
-        buttonDeletePack.Enabled = enabled;
-        buttonDeleteSelectedIcons.Enabled = enabled;
-        buttonExport.Enabled = enabled;
-        buttonImport.Enabled = enabled;
-        buttonNewPack.Enabled = enabled;
-        buttonSave.Enabled = enabled;
-        listBox1.Enabled = enabled;
-        buttonChangeIconName.Enabled = enabled;
-        buttonChangePackDetails.Enabled = enabled;
-        buttonCheckUpdates.Enabled = enabled;
-    }
-
-    private void NewPackControlsVisible(bool enabled)
-    {
-        listView1.Visible = !enabled;
-        label9.Visible = enabled;
-        label10.Visible = enabled;
-        label11.Visible = enabled;
-        label12.Visible = enabled;
-        textBox6.Visible = enabled;
-        textBox7.Visible = enabled;
-        textBox8.Visible = enabled;
-        buttonNewPackOK.Visible = enabled;
-        buttonCancelNewPack.Visible = enabled;
-
-        if (!enabled)
-        {
-            textBox6.Clear();
-            textBox7.Clear();
-            textBox8.Clear();
-        }
-
-        DefaultControlsEnabled(!enabled);
-    }
-
-    private void BadNameControlsVisible(bool enabled)
-    {
-        listView1.Visible = !enabled;
-        label6.Visible = enabled;
-        label7.Visible = enabled;
-        label8.Visible = enabled;
-        textBox5.Visible = enabled;
-        buttonbadNameOK.Visible = enabled;
-        DefaultControlsEnabled(!enabled);
-    }
-
-    private void buttonCancelNewPack_Click(object sender, EventArgs e)
-    {
-        NewPackControlsVisible(false);
-        _existingPack = false;
-    }
-
-    private void buttonNewPackOK_Click(object sender, EventArgs e)
-    {
-        if (string.IsNullOrWhiteSpace(textBox6.Text))
-        {
-            MessageBox.Show("You must enter a pack name");
-            return;
-        }
-
-        var name = textBox6.Text;
-        var description = string.IsNullOrWhiteSpace(textBox7.Text)
-            ? PackPaths.DefaultDescription
-            : textBox7.Text;
-        var author = string.IsNullOrWhiteSpace(textBox8.Text)
-            ? PackPaths.DefaultAuthor
-            : textBox8.Text;
-
-        if (_existingPack && SelectedPack is { } editing)
-        {
-            var nameUnchanged = PackPaths.NamesConflict(editing.Name, name);
-            if (nameUnchanged || !PackNameExists(name, editing))
+            foreach (var icon in large)
             {
-                ApplyPackDetails(editing, name, description, author, renameFolder: !nameUnchanged);
+                if (await IconResizer.FitWithPreviewAsync(icon.Data, Path.GetExtension(icon.Path)) is not { } fit)
+                    continue;
+
+                var (data, ext, picture) = fit;
+                oldPictures.Add(icon.Picture);
+                icon.Data = data;
+                icon.Picture = picture;
+                icon.Path = UniquePath(icons, icon, Path.ChangeExtension(icon.Path, "." + ext));
+                resized++;
+            }
+        }
+        finally
+        {
+            Enabled = true;
+            UseWaitCursor = false;
+        }
+
+        // The queue tray may still be showing the old previews; swap them before freeing them.
+        UpdateQueueTray();
+        foreach (var old in oldPictures)
+            old.Dispose();
+
+        return resized;
+    }
+
+    /// <summary>
+    /// Avoids a clash when a file changes extension (say "logo.gif" becoming "logo.png" next to an
+    /// existing "logo.png") by adding a number.
+    /// </summary>
+    private static string UniquePath(IEnumerable<PackIcon> icons, PackIcon self, string path)
+    {
+        var taken = icons.Where(i => !ReferenceEquals(i, self)).Select(i => Path.GetFileName(i.Path)).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (!taken.Contains(Path.GetFileName(path)))
+            return path;
+
+        var folder = Path.GetDirectoryName(path) ?? "";
+        var stem = Path.GetFileNameWithoutExtension(path);
+        var ext = Path.GetExtension(path);
+        for (var n = 2; ; n++)
+        {
+            var candidate = $"{stem} ({n}){ext}";
+            if (!taken.Contains(candidate))
+                return folder.Length == 0 ? candidate : Path.Combine(folder, candidate);
+        }
+    }
+
+    /// <summary>Scales an emblem image down to Stream Deck's icon size, unless keeping full-size images.</summary>
+    private Task<(byte[] Data, string Extension, Bitmap Preview)?> FitEmblemAsync(byte[] data, string extension) =>
+        _settings.KeepFullSizeImages
+            ? Task.FromResult<(byte[] Data, string Extension, Bitmap Preview)?>(null)
+            : IconResizer.FitWithPreviewAsync(data, extension);
+
+    /// <summary>
+    /// Converts GIFs to lossless animated WebP (on by default; Stream Deck's icon library can't
+    /// preview GIFs in a pack). The window is disabled meanwhile; large GIFs take a few seconds.
+    /// </summary>
+    private async Task<int> ConvertGifsAsync(IEnumerable<PackIcon> icons)
+    {
+        var gifs = icons.Where(i => GifConverter.IsGif(i.Path)).ToList();
+        if (!_settings.ConvertGifsToWebp || gifs.Count == 0 || !GifConverter.IsAvailable)
+            return 0;
+
+        SetStatus(gifs.Count == 1 ? "Converting 1 GIF to animated WEBP..." : $"Converting {gifs.Count} GIFs to animated WEBP...");
+        UseWaitCursor = true;
+        Enabled = false;
+        try
+        {
+            return await GifConverter.ConvertAllAsync(gifs);
+        }
+        finally
+        {
+            Enabled = true;
+            UseWaitCursor = false;
+        }
+    }
+
+    /// <summary>
+    /// GIFs already in packs: ask once whether to convert them (Stream Deck can't preview GIFs in
+    /// its icon library), remember the answer, and act on it on later starts without asking.
+    /// </summary>
+    private async Task CheckExistingGifsAsync()
+    {
+        if (!GifConverter.IsAvailable || _settings.ExistingGifs == ExistingGifsChoice.Keep)
+            return;
+
+        var packsWithGifs = _allPacks
+            .Select(p => (Pack: p, Gifs: p.Icons.Count(i => GifConverter.IsGif(i.Path))))
+            .Where(x => x.Gifs > 0)
+            .ToList();
+        if (packsWithGifs.Count == 0)
+            return;
+
+        List<Manifest> changed;
+        int converted, failed;
+
+        if (_settings.ExistingGifs == ExistingGifsChoice.Convert)
+        {
+            // Already answered "convert": do it quietly for GIFs that turned up since.
+            var gifIcons = packsWithGifs
+                .Select(p => (p.Pack, Icons: p.Pack.Icons.Where(i => GifConverter.IsGif(i.Path)).ToList()))
+                .ToList();
+            converted = await ConvertGifsAsync(gifIcons.SelectMany(g => g.Icons));
+            failed = gifIcons.Sum(g => g.Icons.Count) - converted;
+            changed = gifIcons.Where(g => g.Icons.Any(i => !GifConverter.IsGif(i.Path))).Select(g => g.Pack).ToList();
+        }
+        else
+        {
+            using var dialog = new ConvertGifsDialog(packsWithGifs);
+            dialog.ShowDialog(this);
+            if (dialog.Choice is null)
+                return; // Closed without choosing: ask again next time.
+
+            _settings.ExistingGifs = dialog.Choice;
+            _settings.Save();
+            if (dialog.Choice == ExistingGifsChoice.Keep)
+            {
+                SetStatus("Left your existing GIFs as they are. New GIFs you add are still converted to WEBP.");
                 return;
             }
 
-            MessageBox.Show("Pack Name Already Exists");
-            textBox6.Clear();
-            textBox6.Focus();
-            return;
+            changed = dialog.ChangedPacks;
+            converted = dialog.Converted;
+            failed = dialog.Failed;
         }
 
-        if (PackNameExists(name))
+        if (converted == 0)
         {
-            MessageBox.Show("Pack Name Already Exists");
-            textBox6.Clear();
-            textBox6.Focus();
+            if (failed > 0)
+                SetStatus($"Couldn't convert {failed} GIF{(failed == 1 ? "" : "s")}; {(failed == 1 ? "it was" : "they were")} left as {(failed == 1 ? "a GIF" : "GIFs")}.", Theme.Warning);
             return;
         }
 
-        var created = new Manifest(name, description, author, _streamDeckPacksPath);
-        created.SaveManifest();
-        _allPacks.Add(new Manifest(created.IconPackPath));
-        FinishPackDetailsEdit();
+        foreach (var pack in changed)
+            _pendingPacks.Add(pack);
+        ChangesMade = true;
+        ShowSelectedPack(keepSelection: true);
+
+        var failedNote = failed > 0 ? $" {failed} couldn't be converted and stayed as GIFs." : "";
+        SetStatus($"Converted {converted} GIF{(converted == 1 ? "" : "s")} to animated WEBP in {changed.Count} pack{(changed.Count == 1 ? "" : "s")}.{failedNote} Save to Stream Deck to apply.",
+            failed > 0 ? Theme.Warning : Theme.Success);
     }
 
-    private void ApplyPackDetails(Manifest pack, string name, string description, string author, bool renameFolder)
+    /// <summary>
+    /// Images in existing packs that are larger than Stream Deck needs: ask once whether to shrink
+    /// them, and never again either way (full-size images the user adds later are on purpose).
+    /// </summary>
+    private void CheckLargeImages()
     {
-        pack.Name = name;
-        pack.Description = description;
-        pack.Author = author;
+        if (_settings.ExistingLargeImages is not null || _settings.KeepFullSizeImages)
+            return;
 
-        if (renameFolder)
+        // GIFs the user chose to keep stay GIFs; shrinking an animated one would turn it into WEBP.
+        var keepGifs = _settings.ExistingGifs == ExistingGifsChoice.Keep || !_settings.ConvertGifsToWebp;
+        var large = _allPacks
+            .Select(p => new LargeImages(p,
+                p.Icons.Where(i => !(keepGifs && GifConverter.IsGif(i.Path)) && IconResizer.IsOversized(i.Data, Path.GetExtension(i.Path))).ToList(),
+                IconResizer.IsOversized(p.EmblemData, p.EmblemExtension)))
+            .Where(l => l.Icons.Count > 0 || l.Emblem)
+            .ToList();
+        if (large.Count == 0)
+            return;
+
+        var before = large.Sum(l => l.Bytes);
+        List<ShrunkImage> results;
+        int failed;
+        using (var dialog = new ShrinkImagesDialog(large))
         {
+            dialog.ShowDialog(this);
+            if (dialog.Choice is null)
+                return; // Closed without choosing: ask again next time.
+
+            _settings.ExistingLargeImages = dialog.Choice;
+            _settings.Save();
+            if (dialog.Choice == ExistingLargeImagesChoice.Keep)
+            {
+                SetStatus($"Left your large images as they are. New images you add are still scaled to {IconResizer.TargetSize} px unless you choose to keep them full size.");
+                return;
+            }
+
+            results = dialog.Results;
+            failed = dialog.Failed;
+        }
+
+        // Apply everything at once, then refresh the screen before freeing the old previews.
+        var oldPictures = new List<Image>();
+        var changed = new HashSet<Manifest>();
+        var saved = 0L;
+        foreach (var r in results)
+        {
+            if (!_allPacks.Contains(r.Pack) || (r.Icon is not null && !r.Pack.Icons.Contains(r.Icon)))
+            {
+                r.Preview.Dispose(); // The pack was reloaded from disk meanwhile.
+                continue;
+            }
+
+            if (r.Icon is null)
+            {
+                saved += r.Pack.EmblemData.Length - r.Data.Length;
+                var oldEmblem = r.Pack.Emblem;
+                r.Pack.SetEmblem(r.Data, r.Extension, r.Preview, disposeOld: false);
+                oldPictures.Add(oldEmblem);
+            }
+            else
+            {
+                saved += r.Icon.Data.Length - r.Data.Length;
+                oldPictures.Add(r.Icon.Picture);
+                r.Icon.Data = r.Data;
+                r.Icon.Picture = r.Preview;
+                r.Icon.Path = Path.ChangeExtension(r.Icon.Path, "." + r.Extension);
+            }
+
+            changed.Add(r.Pack);
+        }
+
+        if (changed.Count > 0)
+        {
+            foreach (var pack in changed)
+                _pendingPacks.Add(pack);
+            ChangesMade = true;
+            RefreshPackList(SelectedPack);
+        }
+
+        foreach (var old in oldPictures)
+            old.Dispose();
+
+        var shrunk = results.Count;
+        if (shrunk == 0)
+        {
+            if (failed > 0)
+                SetStatus($"Couldn't shrink {failed} image{(failed == 1 ? "" : "s")}; {(failed == 1 ? "it was" : "they were")} left as {(failed == 1 ? "it is" : "they are")}.", Theme.Warning);
+            return;
+        }
+
+        var failedNote = failed > 0 ? $" {failed} couldn't be resized and stayed full size." : "";
+        SetStatus($"Shrank {shrunk} image{(shrunk == 1 ? "" : "s")} in {changed.Count} pack{(changed.Count == 1 ? "" : "s")}, " +
+                  $"from {ShrinkImagesDialog.FormatSize(before)} to {ShrinkImagesDialog.FormatSize(Math.Max(0, before - saved))}.{failedNote} Save to Stream Deck to apply.",
+            failed > 0 ? Theme.Warning : Theme.Success);
+    }
+
+    /// <summary>A note for the status line about images that were resized or converted, or "".</summary>
+    private static string ProcessingNote(int resized, int converted)
+    {
+        var parts = new List<string>();
+        if (resized > 0)
+            parts.Add(resized == 1
+                ? $"1 large image scaled down to {IconResizer.TargetSize} px"
+                : $"{resized} large images scaled down to {IconResizer.TargetSize} px");
+        if (converted > 0)
+            parts.Add(converted == 1
+                ? "1 GIF converted to animated WEBP so Stream Deck can preview it"
+                : $"{converted} GIFs converted to animated WEBP so Stream Deck can preview them");
+        return parts.Count == 0 ? "" : $" ({string.Join("; ", parts)})";
+    }
+
+    private void ClearQueue()
+    {
+        foreach (var icon in _queue)
+            icon.Picture.Dispose();
+        _queue.Clear();
+        UpdateQueueTray();
+        SetStatus("Cleared the images waiting to be added.");
+    }
+
+    #endregion
+
+    #region Editing icons
+
+    private void EditSelectedIcons()
+    {
+        var pack = SelectedPack;
+        if (pack is null || _grid.SelectedIndices.Count == 0)
+            return;
+
+        var indices = _grid.SelectedIndices.OrderBy(i => i).ToList();
+        var drafts = indices.Select(i => new IconDraft(pack.Icons[i].Picture, pack.Icons[i].Name, pack.Icons[i].Tags,
+            pack.Icons[i].Data, Path.GetExtension(pack.Icons[i].Path))).ToList();
+
+        using var dialog = new IconDetailsDialog(drafts, pack.Name, editing: true);
+        if (dialog.ShowDialog(this) != DialogResult.OK)
+            return;
+
+        for (var i = 0; i < indices.Count; i++)
+        {
+            pack.Icons[indices[i]].Name = drafts[i].Name;
+            pack.Icons[indices[i]].Tags = drafts[i].Tags;
+        }
+
+        ShowSelectedPack(keepSelection: true);
+        MarkChanged(pack, indices.Count == 1 ? $"Updated {drafts[0].Name}." : $"Updated {indices.Count} icons.");
+    }
+
+    private void DeleteSelectedIcons()
+    {
+        var pack = SelectedPack;
+        if (pack is null || _grid.SelectedIndices.Count == 0)
+            return;
+
+        var indices = _grid.SelectedIndices.OrderByDescending(i => i).ToList();
+        if (indices.Count == pack.Icons.Count && indices.Count > 1 &&
+            MessageBox.Show(this, $"Remove all {indices.Count} icons from {pack.Name}?", "Remove all icons",
+                MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2) != DialogResult.Yes)
+            return;
+
+        foreach (var index in indices)
+            pack.RemoveIcon(index);
+
+        ShowSelectedPack();
+        MarkChanged(pack, indices.Count == 1 ? "Removed 1 icon." : $"Removed {indices.Count} icons.");
+    }
+
+    #endregion
+
+    #region Packs
+
+    private string? PackNameProblem(string name, Manifest? except = null) =>
+        _allPacks.Any(m => !ReferenceEquals(m, except) && PackPaths.NamesConflict(m.Name, name))
+            ? $"You already have a pack called \"{name}\"."
+            : null;
+
+    private void CreatePack()
+    {
+        using var dialog = new PackDetailsDialog(name => PackNameProblem(name));
+        if (dialog.ShowDialog(this) != DialogResult.OK)
+            return;
+
+        var created = new Manifest(dialog.PackName, dialog.Description, dialog.Author, _streamDeckPacksPath);
+        created.SaveManifest();
+        var loaded = new Manifest(created.IconPackPath);
+        created.DisposeAllImages();
+        _allPacks.Add(loaded);
+        RefreshPackList(loaded);
+        RememberPackStamps();
+        MarkChanged(loaded, $"Created {loaded.Name}.");
+    }
+
+    private void EditPackDetails()
+    {
+        var pack = SelectedPack;
+        if (pack is null)
+            return;
+
+        using var dialog = new PackDetailsDialog(name => PackNameProblem(name, pack), pack);
+        if (dialog.ShowDialog(this) != DialogResult.OK)
+            return;
+
+        var renamed = !PackPaths.NamesConflict(pack.Name, dialog.PackName);
+        pack.Name = dialog.PackName;
+        pack.Description = dialog.Description;
+        pack.Author = dialog.Author;
+
+        if (renamed)
+        {
+            _pendingRemovals++;
             var oldPath = pack.IconPackPath;
             pack.NewPackPath(_streamDeckPacksPath);
             pack.SaveManifest();
             new DirectoryInfo(oldPath).Delete(true);
         }
 
-        FinishPackDetailsEdit();
+        RefreshPackList(pack);
+        RememberPackStamps();
+        MarkChanged(pack, $"Updated details for {pack.Name}.");
     }
 
-    private void FinishPackDetailsEdit()
-    {
-        _existingPack = false;
-        textBox6.Clear();
-        textBox7.Clear();
-        textBox8.Clear();
-        NewPackControlsVisible(false);
-        UpdateListBoxText();
-        _changesMade = true;
-    }
-
-    private void buttonChangePackEmblem_Click(object sender, EventArgs e)
+    private async void ChangeEmblem()
     {
         var pack = SelectedPack;
-        if (!EnsurePackSelected() || pack is null)
+        if (pack is null)
             return;
 
         using var dialog = new OpenFileDialog
         {
-            Multiselect = false,
-            Filter = "Image files (*.jpg;*.png)|*.jpg;*.jpeg;*.png"
+            Title = "Choose an emblem for " + pack.Name,
+            Filter = ImageHelper.FileFilter
         };
 
-        if (dialog.ShowDialog() != DialogResult.OK)
+        if (dialog.ShowDialog(this) != DialogResult.OK)
             return;
 
-        using (var loaded = Image.FromFile(dialog.FileName))
-            pack.Emblem = ImageHelper.CloneBitmap(loaded);
-        _changesMade = true;
-        ListExistingIcons();
+        byte[] data;
+        string ext;
+        Bitmap preview;
+        try
+        {
+            (data, preview) = ImageHelper.Load(dialog.FileName);
+            ext = ImageHelper.ExtensionOf(dialog.FileName);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, "Couldn't read that image:\n" + ex.Message, "Change emblem", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+
+        var resized = false;
+        UseWaitCursor = true;
+        Enabled = false;
+        try
+        {
+            if (await FitEmblemAsync(data, ext) is { } fit)
+            {
+                preview.Dispose();
+                (data, ext, preview) = fit;
+                resized = true;
+            }
+        }
+        finally
+        {
+            Enabled = true;
+            UseWaitCursor = false;
+        }
+
+        if (!_allPacks.Contains(pack))
+        {
+            preview.Dispose(); // The pack went away (deleted or reloaded) meanwhile.
+            return;
+        }
+
+        pack.SetEmblem(data, ext, preview);
+        ShowSelectedPack(keepSelection: true);
+        MarkChanged(pack, $"Changed the emblem for {pack.Name}{(resized ? $" (scaled down to {IconResizer.TargetSize} px)" : "")}.");
     }
 
-    private void buttonChangePackDetails_Click(object sender, EventArgs e)
+    private void DeletePack()
     {
         var pack = SelectedPack;
-        if (!EnsurePackSelected() || pack is null)
+        if (pack is null)
             return;
 
-        NewPackControlsVisible(true);
-        textBox6.Text = pack.Name;
-        textBox7.Text = pack.Description;
-        textBox8.Text = pack.Author;
-        _existingPack = true;
+        var icons = pack.Icons.Count == 1 ? "its 1 icon" : $"all {pack.Icons.Count} icons";
+        if (MessageBox.Show(this,
+                $"Delete \"{pack.Name}\" and {icons}?\n\nThe pack is removed from Stream Deck right away. This can't be undone. Export it first if you want a copy.",
+                "Delete pack", MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2) != DialogResult.Yes)
+            return;
+
+        var name = pack.Name;
+        var path = pack.IconPackPath;
+        var index = _allPacks.IndexOf(pack);
+        pack.DisposeAllImages();
+        new DirectoryInfo(path).Delete(true);
+        _allPacks.RemoveAt(index);
+        _pendingPacks.Remove(pack);
+        _pendingRemovals++;
+
+        RefreshPackList(_allPacks.Count > 0 ? _allPacks[Math.Min(index, _allPacks.Count - 1)] : null);
+        ChangesMade = true;
+        SetStatus($"Deleted {name}. Restart Stream Deck to remove it from the icon library.");
     }
 
-    private void buttonChangeIconName_Click(object sender, EventArgs e)
+    private void ExportPack()
     {
         var pack = SelectedPack;
-        if (!EnsurePackSelected() || pack is null)
+        if (pack is null)
             return;
 
-        _existingIcons.Clear();
-        foreach (int index in listView1.SelectedIndices)
-            _existingIcons.Add(index);
+        using var dialog = new SaveFileDialog
+        {
+            Title = "Export " + pack.Name,
+            Filter = IconPackFile.SaveFilter,
+            FileName = pack.Name + IconPackFile.Extension,
+            RestoreDirectory = true
+        };
 
-        if (_existingIcons.Count == 0)
+        if (dialog.ShowDialog(this) != DialogResult.OK)
             return;
 
-        AddIconsVisible(true);
-        buttonSkip.Visible = false;
-        label5.Visible = false;
-
-        var first = pack.Icons[_existingIcons[0]];
-        pictureBox1.Image = first.Picture;
-        textBox3.Text = first.Name;
-        textBox4.Text = string.Join(',', first.Tags);
-        textBox3.Focus();
+        try
+        {
+            // Exports what's on screen, unsaved changes included.
+            IconPackFile.Export(pack, dialog.FileName);
+            SetStatus($"Exported {pack.Name}. Anyone with Stream Deck can double-click the file to install it.", Theme.Success);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, "Couldn't export the pack:\n" + ex.Message, "Export failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
     }
 
-    private async void buttonCheckUpdates_Click(object sender, EventArgs e) =>
-        await CheckForUpdatesAsync(silentWhenCurrent: false);
+    private async void ImportPack(string? packFile = null)
+    {
+        if (packFile is null)
+        {
+            using var dialog = new OpenFileDialog
+            {
+                Title = "Import an icon pack",
+                Filter = IconPackFile.OpenFilter,
+                RestoreDirectory = true
+            };
+
+            if (dialog.ShowDialog(this) != DialogResult.OK)
+                return;
+            packFile = dialog.FileName;
+        }
+
+        var extractRoot = Path.Combine(Path.GetTempPath(), "sdim-import-" + Guid.NewGuid().ToString("N"));
+        Manifest? import = null;
+
+        try
+        {
+            var packDir = IconPackFile.Extract(packFile, extractRoot);
+            if (packDir is null)
+            {
+                MessageBox.Show(this, "That file doesn't contain a Stream Deck icon pack. Choose a .streamDeckIconPack file, or a .zip exported from this app.",
+                    "Nothing to import", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            import = Manifest.ReadForImport(packDir, out var skipped);
+            if (import.Icons.Count == 0 && skipped > 0)
+            {
+                MessageBox.Show(this,
+                    $"None of the {skipped} icons in this pack can be imported. Stream Deck icon packs use {ImageHelper.FormatList} images; this pack's icons are missing or in another format.",
+                    "Nothing to import", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            if (PackNameProblem(import.Name) is not null)
+            {
+                using var rename = new RenameImportDialog(import.Name, name => PackNameProblem(name));
+                if (rename.ShowDialog(this) != DialogResult.OK)
+                {
+                    SetStatus("Import cancelled.");
+                    return;
+                }
+
+                import.ChangePackName(rename.PackName);
+            }
+
+            var resized = await FitImagesAsync(import.Icons);
+            var converted = await ConvertGifsAsync(import.Icons);
+            if (await FitEmblemAsync(import.EmblemData, import.EmblemExtension) is { } emblem)
+                import.SetEmblem(emblem.Data, emblem.Extension, emblem.Preview);
+            import.NewPackPath(_streamDeckPacksPath);
+            import.SaveManifest();
+            var loaded = new Manifest(import.IconPackPath);
+            _allPacks.Add(loaded);
+            RefreshPackList(loaded);
+            _pendingPacks.Add(loaded);
+            RememberPackStamps();
+            ChangesMade = true;
+            var skippedNote = skipped == 0 ? "" : $" Skipped {skipped} icon{(skipped == 1 ? "" : "s")} that {(skipped == 1 ? "was" : "were")} missing or not a {ImageHelper.FormatList} image.";
+            SetStatus($"Imported {loaded.Name} with {loaded.Icons.Count} icons{ProcessingNote(resized, converted)}.{skippedNote} Save to Stream Deck to see it.", skipped == 0 ? Theme.Success : Theme.Warning);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, "Couldn't import the pack:\n" + ex.Message, "Import failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+        finally
+        {
+            import?.DisposeAllImages();
+            TryDeleteDirectory(extractRoot);
+        }
+    }
+
+    #endregion
+
+    #region Saving and closing
+
+    private void SaveAllPacks()
+    {
+        foreach (var manifest in _allPacks)
+            manifest.SaveManifest();
+        ChangesMade = false;
+        RememberPackStamps();
+    }
+
+    /// <summary>Opens the Save dialog. Returns false if the user cancelled.</summary>
+    private bool SaveToStreamDeck()
+    {
+        var changed = _allPacks.Where(_pendingPacks.Contains).ToList();
+        using var dialog = new ApplyDialog(changed, _pendingRemovals, _settings.LastApplyMode, SaveAllPacks, p => p.SaveManifest());
+        dialog.ShowDialog(this);
+
+        if (dialog.Outcome == ApplyOutcome.Cancelled)
+            return false;
+
+        _settings.LastApplyMode = dialog.ChosenMode;
+        _settings.Save();
+        _pendingPacks.Clear();
+        _pendingRemovals = 0;
+        // Live installs and saves just rewrote pack folders; that's the app's own doing.
+        RememberPackStamps();
+        ChangesMade = false;
+
+        switch (dialog.Outcome)
+        {
+            case ApplyOutcome.Restarted:
+                SetStatus("Saved and restarted Stream Deck. Your changes are in its icon library.", Theme.Success);
+                break;
+            case ApplyOutcome.AppliedLive:
+                SetStatus(changed.Count == 1
+                    ? $"Applied {changed[0].Name} live. It's in Stream Deck's icon library now."
+                    : $"Applied {changed.Count} packs live. They're in Stream Deck's icon library now.", Theme.Success);
+                break;
+            default:
+                SetStatus("Saved. Some changes will show up after Stream Deck restarts.", Theme.Warning);
+                break;
+        }
+
+        return true;
+    }
+
+    private void OnFormClosing(object? sender, FormClosingEventArgs e)
+    {
+        if (ChangesMade)
+        {
+            var answer = MessageBox.Show(this,
+                "Save your changes to Stream Deck before closing?",
+                "Unsaved changes", MessageBoxButtons.YesNoCancel, MessageBoxIcon.Question);
+
+            if (answer == DialogResult.Cancel)
+            {
+                e.Cancel = true;
+                return;
+            }
+
+            if (answer == DialogResult.Yes && !SaveToStreamDeck())
+            {
+                e.Cancel = true;
+                return;
+            }
+        }
+
+        foreach (var icon in _queue)
+            icon.Picture.Dispose();
+        CleanupTempIconPacks();
+    }
+
+    private static void CleanupTempIconPacks()
+    {
+        foreach (var dir in Directory.GetDirectories(Path.GetTempPath()))
+        {
+            var name = Path.GetFileName(dir);
+            if (name.Contains(".sdIconPack", StringComparison.OrdinalIgnoreCase) ||
+                name.StartsWith("sdim-import-", StringComparison.OrdinalIgnoreCase))
+                TryDeleteDirectory(dir);
+        }
+    }
+
+    private static void TryDeleteDirectory(string path)
+    {
+        try
+        {
+            if (Directory.Exists(path))
+                new DirectoryInfo(path).Delete(true);
+        }
+        catch
+        {
+            // Temp cleanup is best-effort.
+        }
+    }
+
+    #endregion
+
+    #region Drag and drop, shortcuts
+
+    private void WireDragAndDrop(params Control[] targets)
+    {
+        foreach (var target in targets)
+        {
+            target.AllowDrop = true;
+            target.DragEnter += OnDragEnter;
+            target.DragOver += OnDragEnter;
+            target.DragLeave += (_, _) => _dropZone.DragActive = false;
+            target.DragDrop += OnDragDrop;
+        }
+    }
+
+    private static string[] DroppedFiles(DragEventArgs e) =>
+        e.Data?.GetData(DataFormats.FileDrop) as string[] ?? Array.Empty<string>();
+
+    private void OnDragEnter(object? sender, DragEventArgs e)
+    {
+        var files = DroppedFiles(e);
+        var images = SelectedPack is not null && files.Any(ImageHelper.IsSupported);
+        var zip = files.Length == 1 && IconPackFile.IsImportable(files[0]);
+        e.Effect = images || zip ? DragDropEffects.Copy : DragDropEffects.None;
+        _dropZone.DragActive = images;
+    }
+
+    private void OnDragDrop(object? sender, DragEventArgs e)
+    {
+        _dropZone.DragActive = false;
+        var files = DroppedFiles(e);
+
+        if (files.Length == 1 && IconPackFile.IsImportable(files[0]))
+        {
+            BeginInvoke(() => ImportPack(files[0]));
+            return;
+        }
+
+        if (SelectedPack is not null)
+            QueueImages(files);
+    }
+
+    protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+    {
+        switch (keyData)
+        {
+            case Keys.Control | Keys.S:
+                SaveToStreamDeck();
+                return true;
+            case Keys.Control | Keys.O when SelectedPack is not null:
+                BrowseForImages();
+                return true;
+            case Keys.Control | Keys.N:
+                CreatePack();
+                return true;
+        }
+
+        return base.ProcessCmdKey(ref msg, keyData);
+    }
+
+    #endregion
+
+    #region Updates
 
     private async Task CheckForUpdatesAsync(bool silentWhenCurrent)
     {
@@ -732,78 +1429,99 @@ public partial class Form1 : Form
             return;
 
         _updateCheckRunning = true;
-        buttonCheckUpdates.Enabled = false;
-        labelUpdateStatus.Text = "Checking for updates...";
+        _updateButton.Enabled = false;
+        _updateButton.Text = "Checking…";
 
         try
         {
-            var result = await _updater.CheckForUpdateAsync();
+            var result = await _updater.CheckForUpdateAsync(_settings.UpdateChannel);
             if (!result.Succeeded)
             {
                 if (!silentWhenCurrent)
-                    MessageBox.Show(this, result.ErrorMessage ?? "Update check failed.", "Update Check", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                labelUpdateStatus.Text = "Update check failed";
+                    MessageBox.Show(this, result.ErrorMessage ?? "Update check failed.", "Check for updates", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                SetStatus("Couldn't check for updates.", Theme.TextFaint);
                 return;
             }
 
             if (result.IsUpToDate)
             {
-                labelUpdateStatus.Text = "Up to date";
                 if (!silentWhenCurrent)
-                    MessageBox.Show(this, $"You're on the latest version ({AppUpdateService.CurrentVersion}).", "Update Check");
+                {
+                    var latest = _settings.UpdateChannel == UpdateChannel.Beta ? "latest version, including betas" : "latest stable version";
+                    SetStatus($"You're on the {latest} ({AppUpdateService.CurrentVersion}).");
+                    MessageBox.Show(this, $"You're on the {latest} ({AppUpdateService.CurrentVersion}).", "Check for updates");
+                }
                 return;
             }
 
-            labelUpdateStatus.Text = $"Update {result.LatestVersion} available";
-            var answer = MessageBox.Show(
-                this,
-                $"Version {result.LatestVersion} is available (you have {AppUpdateService.CurrentVersion}).\n\nDownload and install it now?",
-                "Update Available",
-                MessageBoxButtons.YesNo,
-                MessageBoxIcon.Information);
+            var kind = result.IsPrerelease ? "Beta version" : "Version";
+            SetStatus($"{kind} {result.LatestVersion} is available.", result.IsPrerelease ? Theme.Warning : Theme.Accent);
+            DialogResult answer;
+            using (var offer = new UpdateAvailableDialog(result.LatestVersion!, AppUpdateService.CurrentVersion, result.IsPrerelease, result.ReleasePageUrl, ChangesMade))
+                answer = offer.ShowDialog(this);
 
-            if (answer == DialogResult.Yes)
+            if (answer == DialogResult.OK)
                 await DownloadAndInstallAsync(result);
         }
         catch (Exception ex)
         {
-            labelUpdateStatus.Text = "Update check failed";
+            SetStatus("Couldn't check for updates.", Theme.TextFaint);
             if (!silentWhenCurrent)
-                MessageBox.Show(this, "Could not check for updates:\n" + ex.Message, "Update Check", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                MessageBox.Show(this, "Couldn't check for updates:\n" + ex.Message, "Check for updates", MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
         finally
         {
             _updateCheckRunning = false;
-            buttonCheckUpdates.Enabled = true;
+            _updateButton.Enabled = true;
+            _updateButton.Text = "Check for updates";
         }
     }
 
     private async Task DownloadAndInstallAsync(UpdateCheckResult update)
     {
-        using var progressForm = new UpdateProgressForm();
-        var progress = new Progress<UpdateProgress>(progressForm.Report);
-        progressForm.Show(this);
+        // The user already chose "Download and install" (and was warned about unsaved changes),
+        // so after the download there's no second question: start Setup and exit at once. Setup
+        // replaces this app's files, so the app must not still be open while it runs.
+        string setupPath;
+        using (var progressForm = new UpdateProgressForm(update.LatestVersion ?? AppUpdateService.CurrentVersion))
+        {
+            var progress = new Progress<UpdateProgress>(progressForm.Report);
+            progressForm.Show(this);
+            try
+            {
+                setupPath = await _updater.DownloadInstallerAsync(update, progress, progressForm.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                progressForm.Finish();
+                SetStatus($"Update cancelled. You're still on version {AppUpdateService.CurrentVersion}; check for updates whenever you're ready.");
+                return;
+            }
+            catch (Exception ex)
+            {
+                progressForm.Finish();
+                MessageBox.Show(this, "Update failed:\n" + ex.Message, "Update failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                SetStatus("Update failed.", Theme.Danger);
+                return;
+            }
+
+            progressForm.Finish();
+        }
 
         try
         {
-            await _updater.InstallUpdateAsync(update, progress);
-            MessageBox.Show(
-                this,
-                "The installer will start now. This app will close so the update can finish.",
-                "Update Ready",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Information);
-            _changesMade = false;
-            Environment.Exit(0);
+            AppUpdateService.LaunchInstaller(setupPath);
         }
         catch (Exception ex)
         {
-            MessageBox.Show(this, "Update failed:\n" + ex.Message, "Update Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            labelUpdateStatus.Text = "Update failed";
+            MessageBox.Show(this, "Couldn't start the installer:\n" + ex.Message, "Update failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            SetStatus("Update failed.", Theme.Danger);
+            return;
         }
-        finally
-        {
-            progressForm.Close();
-        }
+
+        _changesMade = false;
+        Environment.Exit(0);
     }
+
+    #endregion
 }
