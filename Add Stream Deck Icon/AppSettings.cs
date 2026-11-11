@@ -22,6 +22,16 @@ internal enum ApplyMode
     Restart
 }
 
+/// <summary>What to do with GIF icons already in packs (new GIFs are always converted).</summary>
+internal enum ExistingGifsChoice
+{
+    /// <summary>Convert them to animated WebP, now and whenever more turn up.</summary>
+    Convert,
+
+    /// <summary>Leave them as GIFs and don't ask again.</summary>
+    Keep
+}
+
 /// <summary>
 /// Per-user settings, stored outside the install folder so installs and updates don't reset them.
 /// </summary>
@@ -45,6 +55,12 @@ internal sealed class AppSettings
     /// icon library can preview them. On by default.
     /// </summary>
     public bool ConvertGifsToWebp { get; set; } = true;
+
+    /// <summary>
+    /// The answer to "convert the GIFs already in your packs?". Null until the user chooses,
+    /// so the question is asked once and then never again.
+    /// </summary>
+    public ExistingGifsChoice? ExistingGifs { get; set; }
 
     /// <summary>The Save option used last time, offered first next time. Null until first save.</summary>
     public ApplyMode? LastApplyMode { get; set; }

@@ -76,7 +76,11 @@ public class Form1 : Form
             1 => "Loaded 1 icon pack from Stream Deck.",
             var n => $"Loaded {n} icon packs from Stream Deck."
         });
-        Shown += async (_, _) => await CheckForUpdatesAsync(silentWhenCurrent: true);
+        Shown += async (_, _) =>
+        {
+            await CheckExistingGifsAsync();
+            await CheckForUpdatesAsync(silentWhenCurrent: true);
+        };
     }
 
     #region Layout
@@ -684,6 +688,72 @@ public class Form1 : Form
             Enabled = true;
             UseWaitCursor = false;
         }
+    }
+
+    /// <summary>
+    /// GIFs already in packs: ask once whether to convert them (Stream Deck can't preview GIFs in
+    /// its icon library), remember the answer, and act on it on later starts without asking.
+    /// </summary>
+    private async Task CheckExistingGifsAsync()
+    {
+        if (!GifConverter.IsAvailable || _settings.ExistingGifs == ExistingGifsChoice.Keep)
+            return;
+
+        var packsWithGifs = _allPacks
+            .Select(p => (Pack: p, Gifs: p.Icons.Count(i => GifConverter.IsGif(i.Path))))
+            .Where(x => x.Gifs > 0)
+            .ToList();
+        if (packsWithGifs.Count == 0)
+            return;
+
+        List<Manifest> changed;
+        int converted, failed;
+
+        if (_settings.ExistingGifs == ExistingGifsChoice.Convert)
+        {
+            // Already answered "convert": do it quietly for GIFs that turned up since.
+            var gifIcons = packsWithGifs
+                .Select(p => (p.Pack, Icons: p.Pack.Icons.Where(i => GifConverter.IsGif(i.Path)).ToList()))
+                .ToList();
+            converted = await ConvertGifsAsync(gifIcons.SelectMany(g => g.Icons));
+            failed = gifIcons.Sum(g => g.Icons.Count) - converted;
+            changed = gifIcons.Where(g => g.Icons.Any(i => !GifConverter.IsGif(i.Path))).Select(g => g.Pack).ToList();
+        }
+        else
+        {
+            using var dialog = new ConvertGifsDialog(packsWithGifs);
+            dialog.ShowDialog(this);
+            if (dialog.Choice is null)
+                return; // Closed without choosing: ask again next time.
+
+            _settings.ExistingGifs = dialog.Choice;
+            _settings.Save();
+            if (dialog.Choice == ExistingGifsChoice.Keep)
+            {
+                SetStatus("Left your existing GIFs as they are. New GIFs you add are still converted to WEBP.");
+                return;
+            }
+
+            changed = dialog.ChangedPacks;
+            converted = dialog.Converted;
+            failed = dialog.Failed;
+        }
+
+        if (converted == 0)
+        {
+            if (failed > 0)
+                SetStatus($"Couldn't convert {failed} GIF{(failed == 1 ? "" : "s")}; {(failed == 1 ? "it was" : "they were")} left as {(failed == 1 ? "a GIF" : "GIFs")}.", Theme.Warning);
+            return;
+        }
+
+        foreach (var pack in changed)
+            _pendingPacks.Add(pack);
+        ChangesMade = true;
+        ShowSelectedPack(keepSelection: true);
+
+        var failedNote = failed > 0 ? $" {failed} couldn't be converted and stayed as GIFs." : "";
+        SetStatus($"Converted {converted} GIF{(converted == 1 ? "" : "s")} to animated WEBP in {changed.Count} pack{(changed.Count == 1 ? "" : "s")}.{failedNote} Save to Stream Deck to apply.",
+            failed > 0 ? Theme.Warning : Theme.Success);
     }
 
     private static string ConvertedNote(int converted) => converted switch
