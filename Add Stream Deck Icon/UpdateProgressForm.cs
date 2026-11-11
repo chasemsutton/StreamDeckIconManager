@@ -1,3 +1,5 @@
+using Add_Stream_Deck_Icon.UI;
+
 namespace Add_Stream_Deck_Icon;
 
 internal sealed class UpdateProgressForm : Form
@@ -7,29 +9,36 @@ internal sealed class UpdateProgressForm : Form
 
     public UpdateProgressForm()
     {
+        SuspendLayout();
+        AutoScaleDimensions = new SizeF(96F, 96F);
+        AutoScaleMode = AutoScaleMode.Dpi;
+
         Text = "Updating Stream Deck Icon Manager";
+        Font = Theme.Body;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
         MinimizeBox = false;
+        ShowIcon = false;
         StartPosition = FormStartPosition.CenterParent;
-        ClientSize = new Size(420, 110);
-        BackColor = Color.FromArgb(45, 45, 45);
-        ForeColor = Color.White;
+        ClientSize = new Size(440, 120);
+        BackColor = Theme.Window;
+        ForeColor = Theme.Text;
         ShowInTaskbar = false;
 
         _statusLabel = new Label
         {
             AutoSize = false,
-            Location = new Point(16, 18),
-            Size = new Size(388, 23),
-            Text = "Starting update...",
-            ForeColor = Color.White
+            Location = new Point(24, 24),
+            Size = new Size(392, 24),
+            Text = "Starting update…",
+            Font = Theme.BodyStrong,
+            ForeColor = Theme.Text
         };
 
         _progressBar = new ProgressBar
         {
-            Location = new Point(16, 55),
-            Size = new Size(388, 23),
+            Location = new Point(24, 62),
+            Size = new Size(392, 10),
             Minimum = 0,
             Maximum = 100,
             Style = ProgressBarStyle.Continuous
@@ -37,6 +46,14 @@ internal sealed class UpdateProgressForm : Form
 
         Controls.Add(_statusLabel);
         Controls.Add(_progressBar);
+        ResumeLayout(false);
+    }
+
+    protected override void OnHandleCreated(EventArgs e)
+    {
+        base.OnHandleCreated(e);
+        Native.UseDarkTitleBar(this);
+        Native.SetCaptionColors(this, Theme.Window, Theme.Text);
     }
 
     public void Report(UpdateProgress progress)

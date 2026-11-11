@@ -28,6 +28,10 @@ internal static class ReleaseNaming
     public static Uri LatestReleaseApiUri { get; } =
         new($"https://api.github.com/repos/{Owner}/{Repo}/releases/latest");
 
+    /// <summary>Recent releases, newest first, including pre-releases (used by the beta channel).</summary>
+    public static Uri ReleasesApiUri { get; } =
+        new($"https://api.github.com/repos/{Owner}/{Repo}/releases?per_page=30");
+
     public static Uri ReleaseByTagApiUri(string tag) =>
         new($"https://api.github.com/repos/{Owner}/{Repo}/releases/tags/{Uri.EscapeDataString(tag)}");
 

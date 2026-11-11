@@ -12,7 +12,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Content Include="StreamDeckIconManagerLogo.ico" />
+    <!-- Same file as ApplicationIcon, embedded so windows can use the full-resolution icon. -->
+    <EmbeddedResource Include="StreamDeckIconManagerLogo.ico" LogicalName="AppIcon.ico" />
     <Compile Include="..\shared\ReleaseNaming.cs" Link="ReleaseNaming.cs" />
   </ItemGroup>
 

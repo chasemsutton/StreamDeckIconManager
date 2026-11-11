@@ -18,14 +18,13 @@ internal sealed class AppUpdateService
     public static Version CurrentVersion { get; } = ReadCurrentVersion();
     private static readonly HttpClient Http = CreateClient();
 
-    public async Task<UpdateCheckResult> CheckForUpdateAsync(CancellationToken cancellationToken = default)
+    public async Task<UpdateCheckResult> CheckForUpdateAsync(
+        UpdateChannel channel = UpdateChannel.Stable,
+        CancellationToken cancellationToken = default)
     {
-        using var response = await Http.GetAsync(ReleaseNaming.LatestReleaseApiUri, cancellationToken).ConfigureAwait(false);
-        response.EnsureSuccessStatusCode();
-
-        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-        var release = await JsonSerializer.DeserializeAsync<GitHubRelease>(stream, JsonOptions, cancellationToken)
-            .ConfigureAwait(false);
+        var release = channel == UpdateChannel.Beta
+            ? await GetNewestReleaseAsync(cancellationToken).ConfigureAwait(false)
+            : await GetJsonAsync<GitHubRelease>(ReleaseNaming.LatestReleaseApiUri, cancellationToken).ConfigureAwait(false);
 
         if (release is null || string.IsNullOrWhiteSpace(release.TagName))
             return UpdateCheckResult.Failed("Could not read release information from GitHub.");
@@ -43,7 +42,28 @@ internal sealed class AppUpdateService
         if (!IsTrustedDownloadUrl(asset.BrowserDownloadUrl))
             return UpdateCheckResult.Failed("Release download URL is not from the expected GitHub repository.");
 
-        return UpdateCheckResult.Available(latestVersion, release.TagName, asset.Name, asset.BrowserDownloadUrl, release.HtmlUrl);
+        return UpdateCheckResult.Available(latestVersion, release.TagName, asset.Name, asset.BrowserDownloadUrl, release.HtmlUrl, release.Prerelease);
+    }
+
+    /// <summary>Highest-versioned published release, pre-releases included. Drafts are skipped.</summary>
+    private static async Task<GitHubRelease?> GetNewestReleaseAsync(CancellationToken cancellationToken)
+    {
+        var releases = await GetJsonAsync<List<GitHubRelease>>(ReleaseNaming.ReleasesApiUri, cancellationToken).ConfigureAwait(false);
+        return releases?
+            .Where(r => !r.Draft)
+            .Select(r => (Release: r, Ok: TryParseVersion(r.TagName, out var v), Version: v))
+            .Where(x => x.Ok)
+            .OrderByDescending(x => x.Version)
+            .Select(x => x.Release)
+            .FirstOrDefault();
+    }
+
+    private static async Task<T?> GetJsonAsync<T>(Uri uri, CancellationToken cancellationToken)
+    {
+        using var response = await Http.GetAsync(uri, cancellationToken).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+        return await JsonSerializer.DeserializeAsync<T>(stream, JsonOptions, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task InstallUpdateAsync(
@@ -160,11 +180,16 @@ internal sealed class AppUpdateService
             || uri.Host.Equals("objects.githubusercontent.com", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static bool TryParseVersion(string tag, out Version version)
+    /// <summary>Reads tags such as "1.2.0.1", "v1.2.0.1" or "1.2.0.1-beta".</summary>
+    internal static bool TryParseVersion(string tag, out Version version)
     {
         var cleaned = tag.Trim();
         if (cleaned.StartsWith("v", StringComparison.OrdinalIgnoreCase))
             cleaned = cleaned[1..];
+
+        var suffix = cleaned.IndexOfAny(new[] { '-', '+', ' ' });
+        if (suffix >= 0)
+            cleaned = cleaned[..suffix];
 
         return Version.TryParse(cleaned, out version!);
     }
@@ -204,8 +229,10 @@ internal sealed class UpdateCheckResult
         string? assetName,
         string? downloadUrl,
         string? releasePageUrl,
-        string? errorMessage)
+        string? errorMessage,
+        bool isPrerelease = false)
     {
+        IsPrerelease = isPrerelease;
         Succeeded = succeeded;
         IsUpdateAvailable = isUpdateAvailable;
         IsUpToDate = isUpToDate;
@@ -227,13 +254,17 @@ internal sealed class UpdateCheckResult
     public string? ReleasePageUrl { get; }
     public string? ErrorMessage { get; }
 
+    /// <summary>True when the update is a GitHub pre-release (beta channel).</summary>
+    public bool IsPrerelease { get; }
+
     public static UpdateCheckResult Available(
         Version latestVersion,
         string tagName,
         string assetName,
         string downloadUrl,
-        string? releasePageUrl) =>
-        new(true, true, false, latestVersion, tagName, assetName, downloadUrl, releasePageUrl, null);
+        string? releasePageUrl,
+        bool isPrerelease) =>
+        new(true, true, false, latestVersion, tagName, assetName, downloadUrl, releasePageUrl, null, isPrerelease);
 
     public static UpdateCheckResult UpToDate(Version latestVersion) =>
         new(true, false, true, latestVersion, null, null, null, null, null);
@@ -251,6 +282,12 @@ internal sealed class GitHubRelease
 
     [JsonPropertyName("html_url")]
     public string? HtmlUrl { get; set; }
+
+    [JsonPropertyName("prerelease")]
+    public bool Prerelease { get; set; }
+
+    [JsonPropertyName("draft")]
+    public bool Draft { get; set; }
 
     [JsonPropertyName("assets")]
     public List<GitHubAsset> Assets { get; set; } = new();

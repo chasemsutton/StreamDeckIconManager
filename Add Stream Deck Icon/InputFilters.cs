@@ -2,23 +2,34 @@ namespace Add_Stream_Deck_Icon;
 
 internal static class InputFilters
 {
-    public static void LettersDigitsSpaces(object? sender, KeyPressEventArgs e) =>
-        Filter(e, c => char.IsLetterOrDigit(c) || c == ' ');
+    public static bool LetterDigitSpace(char c) => char.IsLetterOrDigit(c) || c == ' ';
+    public static bool LetterDigitSpaceComma(char c) => char.IsLetterOrDigit(c) || c == ' ' || c == ',';
+    public static bool LetterSpace(char c) => char.IsLetter(c) || c == ' ';
+    public static bool Printable(char c) => !char.IsControl(c);
+    public static bool PrintableNoComma(char c) => !char.IsControl(c) && c != ',';
+    /// <summary>Pack descriptions. No commas: Stream Deck would split the hover text at them.</summary>
+    public static bool SentenceText(char c) => char.IsLetterOrDigit(c) || " .!?'&()-:".Contains(c);
 
-    public static void LettersDigitsSpacesCommas(object? sender, KeyPressEventArgs e) =>
-        Filter(e, c => char.IsLetterOrDigit(c) || c == ' ' || c == ',');
-
-    public static void LettersSpaces(object? sender, KeyPressEventArgs e) =>
-        Filter(e, c => char.IsLetter(c) || c == ' ');
-
-    private static void Filter(KeyPressEventArgs e, Func<char, bool> allowed)
+    /// <summary>
+    /// Blocks typed characters that <paramref name="allowed"/> rejects and strips them from pasted text,
+    /// while leaving shortcuts such as Ctrl+A, Ctrl+C and Ctrl+V working.
+    /// </summary>
+    public static void Attach(TextBox box, Func<char, bool> allowed)
     {
-        if (e.KeyChar == (char)Keys.Back)
+        box.KeyPress += (_, e) => e.Handled = !char.IsControl(e.KeyChar) && !allowed(e.KeyChar);
+        box.TextChanged += (_, _) =>
         {
-            e.Handled = false;
-            return;
-        }
+            if (box.Text.All(allowed))
+                return;
 
-        e.Handled = !allowed(e.KeyChar);
+            var caret = box.SelectionStart;
+            var before = box.Text.Length;
+            box.Text = new string(box.Text.Where(allowed).ToArray());
+            box.SelectionStart = Math.Max(0, caret - (before - box.Text.Length));
+        };
     }
+
+    /// <summary>Removes disallowed characters from a value that did not come from typing.</summary>
+    public static string Clean(string value, Func<char, bool> allowed) =>
+        new string(value.Where(allowed).ToArray()).Trim();
 }

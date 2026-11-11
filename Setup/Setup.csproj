@@ -17,7 +17,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Content Include="..\Add Stream Deck Icon\StreamDeckIconManagerLogo.ico" Link="StreamDeckIconManagerLogo.ico" />
+    <EmbeddedResource Include="..\Add Stream Deck Icon\StreamDeckIconManagerLogo.ico" Link="StreamDeckIconManagerLogo.ico" LogicalName="AppIcon.ico" />
   </ItemGroup>
 
 </Project>

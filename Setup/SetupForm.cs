@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.IO.Compression;
 using System.Net.Http.Headers;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using StreamDeckIconManager;
@@ -20,6 +21,11 @@ internal sealed class SetupForm : Form
     public SetupForm()
     {
         Text = $"Stream Deck Icon Manager Setup v{InstallerVersion}";
+        using (var iconStream = typeof(SetupForm).Assembly.GetManifestResourceStream("AppIcon.ico"))
+        {
+            if (iconStream is not null)
+                Icon = new Icon(iconStream);
+        }
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
         MinimizeBox = false;
@@ -286,6 +292,38 @@ internal static class Installer
 
         CreateShortcut(startMenu);
         CreateShortcut(desktop);
+
+        // Updates replace the .exe at the same path, so Explorer would keep showing the cached
+        // icon from the old version. Tell the shell these files changed so it redraws them.
+        RefreshShellIcons(ReleaseNaming.InstalledAppPath, startMenu, desktop);
+    }
+
+    private const int ShcneUpdateItem = 0x00002000;
+    private const int ShcneAssocChanged = 0x08000000;
+    private const uint ShcnfPath = 0x0005;
+    private const uint ShcnfIdList = 0x0000;
+    private const uint ShcnfFlush = 0x1000;
+
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+    private static extern void SHChangeNotify(int eventId, uint flags, string? item1, IntPtr item2);
+
+    [DllImport("shell32.dll", EntryPoint = "SHChangeNotify")]
+    private static extern void SHChangeNotifyGlobal(int eventId, uint flags, IntPtr item1, IntPtr item2);
+
+    private static void RefreshShellIcons(params string[] paths)
+    {
+        try
+        {
+            foreach (var path in paths)
+                SHChangeNotify(ShcneUpdateItem, ShcnfPath | ShcnfFlush, path, IntPtr.Zero);
+
+            // Makes Explorer re-read icons it has cached, including taskbar pins.
+            SHChangeNotifyGlobal(ShcneAssocChanged, ShcnfIdList | ShcnfFlush, IntPtr.Zero, IntPtr.Zero);
+        }
+        catch
+        {
+            // Cosmetic only; the new icon still shows once Windows refreshes its cache.
+        }
     }
 
     private static void CreateShortcut(string shortcutPath)
@@ -297,6 +335,7 @@ internal static class Installer
         var shortcut = shell.CreateShortcut(shortcutPath);
         shortcut.TargetPath = ReleaseNaming.InstalledAppPath;
         shortcut.WorkingDirectory = ReleaseNaming.InstallDirectory;
+        shortcut.IconLocation = ReleaseNaming.InstalledAppPath + ",0";
         shortcut.Description = "Stream Deck Icon Manager";
         shortcut.Save();
     }

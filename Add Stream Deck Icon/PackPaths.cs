@@ -5,12 +5,16 @@ internal static class PackPaths
     public const string CustomPackPrefix = "zzcustomuser";
     public const string DefaultDescription = "Custom icons for Elgato Stream Deck";
     public const string DefaultAuthor = "Custom User";
-    public const string DefaultManifestTags = "Custom User Icon";
 
+    /// <summary>
+    /// Stream Deck's icon pack folder. Set SDIM_ICONPACKS_ROOT to point the app at a test folder instead.
+    /// </summary>
     public static string IconPacksRoot { get; } =
-        Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "Elgato", "StreamDeck", "IconPacks");
+        Environment.GetEnvironmentVariable("SDIM_ICONPACKS_ROOT") is { Length: > 0 } overrideRoot
+            ? overrideRoot
+            : Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "Elgato", "StreamDeck", "IconPacks");
 
     public static string BuildPackFolderName(string packName) =>
         $"{CustomPackPrefix}.{NormalizeKey(packName)}.iconpack.sdIconPack";

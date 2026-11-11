@@ -226,9 +226,17 @@ internal sealed class Manifest
             URL = "",
             Version = "1.0",
             Icon = "icon.png",
-            Tags = PackPaths.DefaultManifestTags
+            // Stream Deck shows a pack's Tags, not its Description, when you hover the pack in the
+            // icon library, so the description goes here too. Commas would split it into separate tags.
+            Tags = HoverText(Description)
         };
         return JsonSerializer.Serialize(dto, JsonOptions);
+    }
+
+    private static string HoverText(string description)
+    {
+        var text = string.IsNullOrWhiteSpace(description) ? PackPaths.DefaultDescription : description.Trim();
+        return text.Replace(", ", " - ").Replace(",", " - ");
     }
 
     private static void CopyFileOverwrite(string source, string destination)
