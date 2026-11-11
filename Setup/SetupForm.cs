@@ -281,15 +281,29 @@ internal sealed class SetupForm : Form
     private async Task<bool> EnsureAppClosedAsync()
     {
         var deadline = DateTime.UtcNow.AddSeconds(15);
+        var extendedForDismiss = false;
         while (true)
         {
             var running = AppProcesses.Find(_waitPid);
             if (running.Count == 0)
                 return true;
 
+            // Versions before 1.2.0.1 start Setup, then sit on an "Update Ready" message and only
+            // exit once it's dismissed. Press its OK button for the user; the app then closes itself.
+            var dismissed = running.Count(AppProcesses.DismissUpdateReadyMessage);
+            if (dismissed > 0 && !extendedForDismiss)
+            {
+                // Give the old version time to shut down, but only once: if dismissing didn't
+                // work, fall through to asking the user rather than waiting forever.
+                extendedForDismiss = true;
+                deadline = DateTime.UtcNow.AddSeconds(15);
+            }
+
             if (DateTime.UtcNow < deadline)
             {
-                _statusLabel.Text = "Waiting for Stream Deck Icon Manager to close...";
+                _statusLabel.Text = dismissed > 0
+                    ? "Closing the previous version..."
+                    : "Waiting for Stream Deck Icon Manager to close...";
                 AppProcesses.DisposeAll(running);
                 await Task.Delay(500);
                 continue;
@@ -386,6 +400,69 @@ internal static class AppProcesses
             {
                 // Already exited.
             }
+        }
+
+        return found;
+    }
+
+    // Closing a message box that only has an OK button is the same as pressing OK. (Posting the
+    // OK command doesn't work: Windows gives that lone button the Cancel ID.)
+    private const uint WmClose = 0x0010;
+
+    private delegate bool EnumWindowsProc(IntPtr hwnd, IntPtr lParam);
+
+    [DllImport("user32.dll")]
+    private static extern bool EnumWindows(EnumWindowsProc callback, IntPtr lParam);
+
+    [DllImport("user32.dll")]
+    private static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint processId);
+
+    [DllImport("user32.dll")]
+    private static extern bool IsWindowVisible(IntPtr hwnd);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern int GetWindowText(IntPtr hwnd, System.Text.StringBuilder text, int maxCount);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern int GetClassName(IntPtr hwnd, System.Text.StringBuilder className, int maxCount);
+
+    [DllImport("user32.dll")]
+    private static extern bool PostMessage(IntPtr hwnd, uint msg, IntPtr wParam, IntPtr lParam);
+
+    /// <summary>
+    /// If the process is showing the "Update Ready" message that older versions display after
+    /// starting Setup, dismisses it as if OK were pressed. Returns true if one was found.
+    /// </summary>
+    public static bool DismissUpdateReadyMessage(Process process)
+    {
+        var found = false;
+        try
+        {
+            var pid = (uint)process.Id;
+            EnumWindows((hwnd, _) =>
+            {
+                GetWindowThreadProcessId(hwnd, out var owner);
+                if (owner != pid || !IsWindowVisible(hwnd))
+                    return true;
+
+                var cls = new System.Text.StringBuilder(64);
+                GetClassName(hwnd, cls, cls.Capacity);
+                if (cls.ToString() != "#32770") // standard dialog / message box
+                    return true;
+
+                var title = new System.Text.StringBuilder(128);
+                GetWindowText(hwnd, title, title.Capacity);
+                if (!title.ToString().Equals("Update Ready", StringComparison.OrdinalIgnoreCase))
+                    return true;
+
+                PostMessage(hwnd, WmClose, IntPtr.Zero, IntPtr.Zero);
+                found = true;
+                return false;
+            }, IntPtr.Zero);
+        }
+        catch
+        {
+            // Process exited or access denied; the normal wait handles it.
         }
 
         return found;
