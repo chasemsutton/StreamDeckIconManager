@@ -6,7 +6,7 @@ namespace Add_Stream_Deck_Icon;
 /// Main window. Layout: app bar (save) on top, pack list on the left, the open pack on the right
 /// (header, icon grid, drop tray), status line at the bottom.
 /// </summary>
-public class Form1 : Form
+public partial class Form1 : Form
 {
     private readonly List<Manifest> _allPacks = new();
     private readonly List<PackIcon> _queue = new();
@@ -70,6 +70,7 @@ public class Form1 : Form
         }
 
         RefreshPackList();
+        StartPackWatch();
         SetStatus(_allPacks.Count switch
         {
             0 => "No custom icon packs yet.",
@@ -839,6 +840,7 @@ public class Form1 : Form
         created.DisposeAllImages();
         _allPacks.Add(loaded);
         RefreshPackList(loaded);
+        RememberPackStamps();
         MarkChanged(loaded, $"Created {loaded.Name}.");
     }
 
@@ -867,6 +869,7 @@ public class Form1 : Form
         }
 
         RefreshPackList(pack);
+        RememberPackStamps();
         MarkChanged(pack, $"Updated details for {pack.Name}.");
     }
 
@@ -1012,6 +1015,7 @@ public class Form1 : Form
             _allPacks.Add(loaded);
             RefreshPackList(loaded);
             _pendingPacks.Add(loaded);
+            RememberPackStamps();
             ChangesMade = true;
             var skippedNote = skipped == 0 ? "" : $" Skipped {skipped} icon{(skipped == 1 ? "" : "s")} that {(skipped == 1 ? "was" : "were")} missing or not a {ImageHelper.FormatList} image.";
             SetStatus($"Imported {loaded.Name} with {loaded.Icons.Count} icons{ConvertedNote(converted)}.{skippedNote} Save to Stream Deck to see it.", skipped == 0 ? Theme.Success : Theme.Warning);
@@ -1036,6 +1040,7 @@ public class Form1 : Form
         foreach (var manifest in _allPacks)
             manifest.SaveManifest();
         ChangesMade = false;
+        RememberPackStamps();
     }
 
     /// <summary>Opens the Save dialog. Returns false if the user cancelled.</summary>
@@ -1052,6 +1057,8 @@ public class Form1 : Form
         _settings.Save();
         _pendingPacks.Clear();
         _pendingRemovals = 0;
+        // Live installs and saves just rewrote pack folders; that's the app's own doing.
+        RememberPackStamps();
         ChangesMade = false;
 
         switch (dialog.Outcome)
