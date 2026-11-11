@@ -90,36 +90,81 @@ internal sealed class AppUpdateService
         if (!update.IsUpdateAvailable || string.IsNullOrWhiteSpace(update.DownloadUrl))
             throw new InvalidOperationException("No update is available to install.");
 
-        var workRoot = Path.Combine(Path.GetTempPath(), "StreamDeckIconManager-Update", Guid.NewGuid().ToString("N"));
+        var workRoot = Path.Combine(DownloadsFolder, Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(workRoot);
 
-        var downloadName = update.AssetName ?? ReleaseNaming.SetupFileName(update.LatestVersion ?? CurrentVersion);
-        var downloadPath = Path.Combine(workRoot, downloadName);
-
-        progress?.Report(new UpdateProgress("Downloading update...", 0));
-        await DownloadFileAsync(update.DownloadUrl, downloadPath, progress, cancellationToken).ConfigureAwait(false);
-
-        string setupPath;
-        if (downloadName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+        try
         {
-            setupPath = downloadPath;
-        }
-        else if (downloadName.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
-        {
-            // Legacy zip releases that contain a setup executable.
-            progress?.Report(new UpdateProgress("Extracting installer...", 90));
-            var extractPath = Path.Combine(workRoot, "extracted");
-            ZipFile.ExtractToDirectory(downloadPath, extractPath);
-            setupPath = FindSetupExecutable(extractPath)
-                ?? throw new FileNotFoundException("Could not find a setup executable in the downloaded update package.");
-        }
-        else
-        {
-            throw new InvalidOperationException($"Unsupported update package type: {downloadName}");
-        }
+            var downloadName = update.AssetName ?? ReleaseNaming.SetupFileName(update.LatestVersion ?? CurrentVersion);
+            var downloadPath = Path.Combine(workRoot, downloadName);
 
-        progress?.Report(new UpdateProgress("Download complete.", 100));
-        return setupPath;
+            progress?.Report(new UpdateProgress("Downloading update...", 0));
+            await DownloadFileAsync(update.DownloadUrl, downloadPath, progress, cancellationToken).ConfigureAwait(false);
+
+            string setupPath;
+            if (downloadName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+            {
+                setupPath = downloadPath;
+            }
+            else if (downloadName.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+            {
+                // Legacy zip releases that contain a setup executable.
+                progress?.Report(new UpdateProgress("Extracting installer...", 90));
+                var extractPath = Path.Combine(workRoot, "extracted");
+                ZipFile.ExtractToDirectory(downloadPath, extractPath);
+                setupPath = FindSetupExecutable(extractPath)
+                    ?? throw new FileNotFoundException("Could not find a setup executable in the downloaded update package.");
+            }
+            else
+            {
+                throw new InvalidOperationException($"Unsupported update package type: {downloadName}");
+            }
+
+            progress?.Report(new UpdateProgress("Download complete.", 100));
+            return setupPath;
+        }
+        catch
+        {
+            // Cancelled or failed: don't leave a partial installer behind.
+            TryDeleteDirectory(workRoot);
+            throw;
+        }
+    }
+
+    /// <summary>Where downloaded installers go, one subfolder per download.</summary>
+    private static string DownloadsFolder => Path.Combine(Path.GetTempPath(), "StreamDeckIconManager-Update");
+
+    /// <summary>
+    /// Deletes installers from earlier updates (about 70 MB each). Called at startup; an installer
+    /// that's still running is locked and simply left for next time.
+    /// </summary>
+    public static void CleanupOldDownloads()
+    {
+        try
+        {
+            if (!Directory.Exists(DownloadsFolder))
+                return;
+
+            foreach (var dir in Directory.GetDirectories(DownloadsFolder))
+                TryDeleteDirectory(dir);
+        }
+        catch
+        {
+            // Best-effort.
+        }
+    }
+
+    private static void TryDeleteDirectory(string path)
+    {
+        try
+        {
+            if (Directory.Exists(path))
+                Directory.Delete(path, true);
+        }
+        catch
+        {
+            // Locked or already gone.
+        }
     }
 
     private static async Task DownloadFileAsync(

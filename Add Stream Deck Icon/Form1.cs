@@ -71,6 +71,8 @@ public partial class Form1 : Form
 
         RefreshPackList();
         StartPackWatch();
+        // Installers left from earlier updates (about 70 MB each).
+        AppUpdateService.CleanupOldDownloads();
         SetStatus(_allPacks.Count switch
         {
             0 => "No custom icon packs yet.",
@@ -1228,7 +1230,7 @@ public partial class Form1 : Form
             var kind = result.IsPrerelease ? "Beta version" : "Version";
             SetStatus($"{kind} {result.LatestVersion} is available.", result.IsPrerelease ? Theme.Warning : Theme.Accent);
             DialogResult answer;
-            using (var offer = new UpdateAvailableDialog(result.LatestVersion!, AppUpdateService.CurrentVersion, result.IsPrerelease, result.ReleasePageUrl))
+            using (var offer = new UpdateAvailableDialog(result.LatestVersion!, AppUpdateService.CurrentVersion, result.IsPrerelease, result.ReleasePageUrl, ChangesMade))
                 answer = offer.ShowDialog(this);
 
             if (answer == DialogResult.OK)
@@ -1250,37 +1252,33 @@ public partial class Form1 : Form
 
     private async Task DownloadAndInstallAsync(UpdateCheckResult update)
     {
-        // Unsaved changes are handled in the "ready to install" dialog, which warns and lets the
-        // user cancel to save them properly first.
+        // The user already chose "Download and install" (and was warned about unsaved changes),
+        // so after the download there's no second question: start Setup and exit at once. Setup
+        // replaces this app's files, so the app must not still be open while it runs.
         string setupPath;
-        using (var progressForm = new UpdateProgressForm())
+        using (var progressForm = new UpdateProgressForm(update.LatestVersion ?? AppUpdateService.CurrentVersion))
         {
             var progress = new Progress<UpdateProgress>(progressForm.Report);
             progressForm.Show(this);
             try
             {
-                setupPath = await _updater.DownloadInstallerAsync(update, progress);
+                setupPath = await _updater.DownloadInstallerAsync(update, progress, progressForm.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                progressForm.Finish();
+                SetStatus($"Update cancelled. You're still on version {AppUpdateService.CurrentVersion}; check for updates whenever you're ready.");
+                return;
             }
             catch (Exception ex)
             {
-                progressForm.Close();
+                progressForm.Finish();
                 MessageBox.Show(this, "Update failed:\n" + ex.Message, "Update failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 SetStatus("Update failed.", Theme.Danger);
                 return;
             }
 
-            progressForm.Close();
-        }
-
-        // Ask first, then start Setup and exit at once. Setup replaces this app's files, so the
-        // app must not still be open (or showing a dialog) while it runs.
-        using (var ready = new UpdateReadyDialog(update.LatestVersion ?? AppUpdateService.CurrentVersion, update.IsPrerelease, ChangesMade))
-        {
-            if (ready.ShowDialog(this) != DialogResult.OK)
-            {
-                SetStatus($"Update cancelled. You're still on version {AppUpdateService.CurrentVersion}; check for updates whenever you're ready.");
-                return;
-            }
+            progressForm.Finish();
         }
 
         try
