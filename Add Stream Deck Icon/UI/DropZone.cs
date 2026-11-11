@@ -143,7 +143,7 @@ internal sealed class DropZone : Panel
         TextRenderer.DrawText(g, title, Theme.BodyStrong,
             new Rectangle(x, (int)(Height / 2f - 20 * s), w, (int)(20 * s)), Theme.Text,
             TextFormatFlags.Left | TextFormatFlags.Bottom | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
-        TextRenderer.DrawText(g, "PNG, JPG or GIF. Square images work best, ideally 144 × 144 px.", Theme.Small,
+        TextRenderer.DrawText(g, "PNG, JPG, GIF, WEBP or SVG. Square images work best, ideally 144 × 144 px.", Theme.Small,
             new Rectangle(x, (int)(Height / 2f + 2 * s), w, (int)(18 * s)), Theme.TextFaint,
             TextFormatFlags.Left | TextFormatFlags.Top | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
     }

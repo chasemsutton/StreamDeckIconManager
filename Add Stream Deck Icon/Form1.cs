@@ -593,7 +593,7 @@ public class Form1 : Form
         {
             Title = "Choose images for your icons",
             Multiselect = true,
-            Filter = "Images (*.png;*.jpg;*.jpeg;*.gif)|*.png;*.jpg;*.jpeg;*.gif"
+            Filter = ImageHelper.FileFilter
         };
 
         if (dialog.ShowDialog(this) == DialogResult.OK)
@@ -606,7 +606,7 @@ public class Form1 : Form
         var skipped = 0;
         foreach (var file in files)
         {
-            if (!PackPaths.IsSupportedImageExtension(file))
+            if (!ImageHelper.IsSupported(file))
             {
                 skipped++;
                 continue;
@@ -626,7 +626,7 @@ public class Form1 : Form
         UpdateQueueTray();
 
         if (skipped > 0)
-            SetStatus($"Skipped {skipped} {(skipped == 1 ? "file" : "files")} that {(skipped == 1 ? "isn't" : "aren't")} a readable PNG, JPG or GIF.", Theme.Warning);
+            SetStatus($"Skipped {skipped} {(skipped == 1 ? "file" : "files")} that {(skipped == 1 ? "isn't" : "aren't")} a readable {ImageHelper.FormatList} image.", Theme.Warning);
         else if (added > 0)
             SetStatus($"{_queue.Count} {(_queue.Count == 1 ? "image" : "images")} ready. Click Add to name them and put them in the pack.");
     }
@@ -643,7 +643,7 @@ public class Form1 : Form
             return;
 
         for (var i = 0; i < drafts.Count; i++)
-            pack.AddIcon(drafts[i].Name, drafts[i].Tags, _queue[i].Picture);
+            pack.AddIcon(drafts[i].Name, drafts[i].Tags, _queue[i]);
 
         var count = _queue.Count;
         _queue.Clear();
@@ -766,17 +766,21 @@ public class Form1 : Form
         using var dialog = new OpenFileDialog
         {
             Title = "Choose an emblem for " + pack.Name,
-            Filter = "Images (*.png;*.jpg;*.jpeg)|*.png;*.jpg;*.jpeg"
+            Filter = ImageHelper.FileFilter
         };
 
         if (dialog.ShowDialog(this) != DialogResult.OK)
             return;
 
-        using (var loaded = Image.FromFile(dialog.FileName))
+        try
         {
-            var old = pack.Emblem;
-            pack.Emblem = ImageHelper.CloneBitmap(loaded);
-            old.Dispose();
+            var (data, preview) = ImageHelper.Load(dialog.FileName);
+            pack.SetEmblem(data, ImageHelper.ExtensionOf(dialog.FileName), preview);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, "Couldn't read that image:\n" + ex.Message, "Change emblem", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
         }
 
         ShowSelectedPack(keepSelection: true);
@@ -869,7 +873,7 @@ public class Form1 : Form
             if (import.Icons.Count == 0 && skipped > 0)
             {
                 MessageBox.Show(this,
-                    $"None of the {skipped} icons in this pack can be imported. This app supports PNG, JPG and GIF icons; this pack uses another format, such as SVG.",
+                    $"None of the {skipped} icons in this pack can be imported. Stream Deck icon packs use {ImageHelper.FormatList} images; this pack's icons are missing or in another format.",
                     "Nothing to import", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
@@ -892,7 +896,7 @@ public class Form1 : Form
             _allPacks.Add(loaded);
             RefreshPackList(loaded);
             ChangesMade = true;
-            var skippedNote = skipped == 0 ? "" : $" Skipped {skipped} icon{(skipped == 1 ? "" : "s")} in a format this app can't read (such as SVG).";
+            var skippedNote = skipped == 0 ? "" : $" Skipped {skipped} icon{(skipped == 1 ? "" : "s")} that {(skipped == 1 ? "was" : "were")} missing or not a {ImageHelper.FormatList} image.";
             SetStatus($"Imported {loaded.Name} with {loaded.Icons.Count} icons.{skippedNote} Save to Stream Deck to see it.", skipped == 0 ? Theme.Success : Theme.Warning);
         }
         catch (Exception ex)
@@ -1031,7 +1035,7 @@ public class Form1 : Form
     private void OnDragEnter(object? sender, DragEventArgs e)
     {
         var files = DroppedFiles(e);
-        var images = SelectedPack is not null && files.Any(PackPaths.IsSupportedImageExtension);
+        var images = SelectedPack is not null && files.Any(ImageHelper.IsSupported);
         var zip = files.Length == 1 && IconPackFile.IsImportable(files[0]);
         e.Effect = images || zip ? DragDropEffects.Copy : DragDropEffects.None;
         _dropZone.DragActive = images;

@@ -30,13 +30,4 @@ internal static class PackPaths
         var folder = Path.GetFileName(path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
         return folder.StartsWith(CustomPackPrefix, StringComparison.OrdinalIgnoreCase);
     }
-
-    public static bool IsSupportedImageExtension(string path)
-    {
-        var ext = Path.GetExtension(path);
-        return ext.Equals(".png", StringComparison.OrdinalIgnoreCase)
-            || ext.Equals(".jpg", StringComparison.OrdinalIgnoreCase)
-            || ext.Equals(".jpeg", StringComparison.OrdinalIgnoreCase)
-            || ext.Equals(".gif", StringComparison.OrdinalIgnoreCase);
-    }
 }
