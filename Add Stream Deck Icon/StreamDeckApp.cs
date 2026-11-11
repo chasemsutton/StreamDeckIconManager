@@ -60,16 +60,9 @@ internal static class StreamDeckApp
             {
                 using (process)
                 {
-                    try
-                    {
-                        process.Kill(entireProcessTree: true);
-                        if (!process.WaitForExit(10_000))
-                            throw new InvalidOperationException("Stream Deck didn't close in time. Quit it from the system tray, then start it again.");
-                    }
-                    catch (InvalidOperationException) when (process.HasExited)
-                    {
-                        // Already gone.
-                    }
+                    Stop(process);
+                    if (!process.WaitForExit(10_000))
+                        throw new InvalidOperationException("Stream Deck didn't close in time. Quit it from the system tray, then start it again.");
                 }
             }
 
@@ -78,5 +71,40 @@ internal static class StreamDeckApp
         }).ConfigureAwait(false);
 
         Process.Start(new ProcessStartInfo(exe) { UseShellExecute = true, WorkingDirectory = Path.GetDirectoryName(exe)! });
+    }
+
+    /// <summary>
+    /// Stops Stream Deck and its plugins. Some plugins run as administrator (HWiNFO, for example)
+    /// and can't be stopped from here; that's fine, they exit on their own once Stream Deck is gone.
+    /// Only Stream Deck itself refusing to stop is an error.
+    /// </summary>
+    private static void Stop(Process process)
+    {
+        try
+        {
+            process.Kill(entireProcessTree: true);
+        }
+        catch (AggregateException)
+        {
+            // Some child processes couldn't be stopped; handled below.
+        }
+        catch (System.ComponentModel.Win32Exception)
+        {
+            // Access denied on part of the tree; handled below.
+        }
+        catch (InvalidOperationException)
+        {
+            // Already exited.
+        }
+
+        try
+        {
+            if (!process.HasExited)
+                process.Kill();
+        }
+        catch (InvalidOperationException)
+        {
+            // Exited in the meantime.
+        }
     }
 }
