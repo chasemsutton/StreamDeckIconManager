@@ -1227,15 +1227,11 @@ public partial class Form1 : Form
 
             var kind = result.IsPrerelease ? "Beta version" : "Version";
             SetStatus($"{kind} {result.LatestVersion} is available.", result.IsPrerelease ? Theme.Warning : Theme.Accent);
-            var betaNote = result.IsPrerelease ? "\n\nThis is a beta release and may contain bugs." : "";
-            var answer = MessageBox.Show(
-                this,
-                $"{kind} {result.LatestVersion} is available (you have {AppUpdateService.CurrentVersion}).{betaNote}\n\nDownload and install it now?",
-                result.IsPrerelease ? "Beta update available" : "Update available",
-                MessageBoxButtons.YesNo,
-                MessageBoxIcon.Information);
+            DialogResult answer;
+            using (var offer = new UpdateAvailableDialog(result.LatestVersion!, AppUpdateService.CurrentVersion, result.IsPrerelease, result.ReleasePageUrl))
+                answer = offer.ShowDialog(this);
 
-            if (answer == DialogResult.Yes)
+            if (answer == DialogResult.OK)
                 await DownloadAndInstallAsync(result);
         }
         catch (Exception ex)
@@ -1254,11 +1250,8 @@ public partial class Form1 : Form
 
     private async Task DownloadAndInstallAsync(UpdateCheckResult update)
     {
-        if (ChangesMade && MessageBox.Show(this,
-                "Save your changes to Stream Deck before updating?",
-                "Unsaved changes", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
-            SaveAllPacks();
-
+        // Unsaved changes are handled in the "ready to install" dialog, which warns and lets the
+        // user cancel to save them properly first.
         string setupPath;
         using (var progressForm = new UpdateProgressForm())
         {
