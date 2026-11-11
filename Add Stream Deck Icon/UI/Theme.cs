@@ -71,6 +71,7 @@ internal static class Theme
         public const string Clear = "\uE894";
         public const string Photo = "\uEB9F";
         public const string Settings = "\uE713";
+        public const string Lightning = "\uE945";
     }
 
     public static GraphicsPath RoundedRect(RectangleF r, float radius)

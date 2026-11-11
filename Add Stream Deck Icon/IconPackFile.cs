@@ -22,9 +22,9 @@ internal static class IconPackFile
 
     /// <summary>
     /// Writes the pack as a .streamDeckIconPack, from what's in memory (so unsaved changes are
-    /// included) and without the app's backup folder.
+    /// included) and without the app's backup folder. Returns the manifest Version it carries.
     /// </summary>
-    public static void Export(Manifest pack, string outputPath)
+    public static string Export(Manifest pack, string outputPath)
     {
         var work = Path.Combine(Path.GetTempPath(), "sdim-export-" + Guid.NewGuid().ToString("N"));
         try
@@ -41,6 +41,9 @@ internal static class IconPackFile
             if (File.Exists(outputPath))
                 File.Delete(outputPath);
             ZipFile.CreateFromDirectory(packFolder, outputPath, CompressionLevel.Optimal, includeBaseDirectory: true);
+
+            using var manifest = System.Text.Json.JsonDocument.Parse(File.ReadAllText(Path.Combine(packFolder, "manifest.json")));
+            return manifest.RootElement.GetProperty("Version").GetString() ?? "";
         }
         finally
         {

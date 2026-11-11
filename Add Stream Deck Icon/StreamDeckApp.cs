@@ -2,6 +2,14 @@ using System.Diagnostics;
 
 namespace Add_Stream_Deck_Icon;
 
+internal enum LiveInstallResult
+{
+    Installed,
+    Declined,
+    Skipped,
+    TimedOut
+}
+
 /// <summary>Finds, stops and starts the Elgato Stream Deck desktop app so new icon packs load.</summary>
 internal static class StreamDeckApp
 {
@@ -71,6 +79,112 @@ internal static class StreamDeckApp
         }).ConfigureAwait(false);
 
         Process.Start(new ProcessStartInfo(exe) { UseShellExecute = true, WorkingDirectory = Path.GetDirectoryName(exe)! });
+    }
+
+    /// <summary>
+    /// Opens a .streamDeckIconPack so Stream Deck installs it live, then waits for the outcome.
+    /// Stream Deck asks the user to confirm first. The pack counts as installed once its
+    /// manifest.json on disk carries <paramref name="expectedVersion"/>.
+    /// </summary>
+    public static async Task<LiveInstallResult> InstallPackageAsync(
+        string packagePath,
+        string installedManifestPath,
+        string expectedVersion,
+        CancellationToken skip)
+    {
+        var before = StreamDeckWindows();
+        Process.Start(new ProcessStartInfo(packagePath) { UseShellExecute = true });
+
+        var promptSeen = false;
+        DateTime? promptGoneAt = null;
+        var deadline = DateTime.UtcNow.AddMinutes(5);
+
+        while (true)
+        {
+            if (InstalledVersion(installedManifestPath) == expectedVersion)
+                return LiveInstallResult.Installed;
+
+            if (skip.IsCancellationRequested)
+                return LiveInstallResult.Skipped;
+
+            if (DateTime.UtcNow > deadline)
+                return LiveInstallResult.TimedOut;
+
+            // Stream Deck's confirmation shows up as a new window. If it opens and then closes
+            // without the pack landing on disk, the user chose Cancel.
+            var prompts = StreamDeckWindows().Except(before).ToList();
+            if (prompts.Count > 0)
+            {
+                promptSeen = true;
+                promptGoneAt = null;
+            }
+            else if (promptSeen)
+            {
+                promptGoneAt ??= DateTime.UtcNow;
+                if (DateTime.UtcNow - promptGoneAt > TimeSpan.FromSeconds(3))
+                    return LiveInstallResult.Declined;
+            }
+
+            try
+            {
+                await Task.Delay(300, skip).ConfigureAwait(false);
+            }
+            catch (TaskCanceledException)
+            {
+                // Loop once more so an install that just finished still counts.
+            }
+        }
+    }
+
+    private static string? InstalledVersion(string manifestPath)
+    {
+        try
+        {
+            if (!File.Exists(manifestPath))
+                return null;
+            using var doc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(manifestPath));
+            return doc.RootElement.TryGetProperty("Version", out var v) ? v.GetString() : null;
+        }
+        catch
+        {
+            // Mid-write; try again on the next poll.
+            return null;
+        }
+    }
+
+    private delegate bool EnumWindowsProc(IntPtr hwnd, IntPtr lParam);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern bool EnumWindows(EnumWindowsProc callback, IntPtr lParam);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint processId);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern bool IsWindowVisible(IntPtr hwnd);
+
+    /// <summary>Visible top-level windows belonging to Stream Deck.</summary>
+    private static HashSet<IntPtr> StreamDeckWindows()
+    {
+        var ids = new HashSet<uint>();
+        foreach (var p in Process.GetProcessesByName(ProcessName))
+        {
+            ids.Add((uint)p.Id);
+            p.Dispose();
+        }
+
+        var windows = new HashSet<IntPtr>();
+        if (ids.Count == 0)
+            return windows;
+
+        EnumWindows((hwnd, _) =>
+        {
+            GetWindowThreadProcessId(hwnd, out var pid);
+            if (ids.Contains(pid) && IsWindowVisible(hwnd))
+                windows.Add(hwnd);
+            return true;
+        }, IntPtr.Zero);
+        return windows;
     }
 
     /// <summary>

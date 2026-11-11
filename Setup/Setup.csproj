@@ -18,6 +18,7 @@
     <Compile Include="..\Add Stream Deck Icon\UI\Theme.cs" Link="UI\Theme.cs" />
     <Compile Include="..\Add Stream Deck Icon\UI\ThemedButton.cs" Link="UI\ThemedButton.cs" />
     <Compile Include="..\Add Stream Deck Icon\UI\Native.cs" Link="UI\Native.cs" />
+    <Compile Include="..\Add Stream Deck Icon\UI\ProgressLine.cs" Link="UI\ProgressLine.cs" />
   </ItemGroup>
 
   <ItemGroup>

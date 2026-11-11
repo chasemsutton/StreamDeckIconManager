@@ -15,6 +15,12 @@ public class Form1 : Form
     private readonly AppSettings _settings = AppSettings.Load();
 
     private bool _changesMade;
+
+    /// <summary>Packs changed since Stream Deck last loaded them (live apply installs these).</summary>
+    private readonly HashSet<Manifest> _pendingPacks = new();
+
+    /// <summary>Packs deleted or renamed since; Stream Deck drops the old ones at its next restart.</summary>
+    private int _pendingRemovals;
     private bool _updateCheckRunning;
 
     // App bar
@@ -501,8 +507,9 @@ public class Form1 : Form
         }
     }
 
-    private void MarkChanged(string status)
+    private void MarkChanged(Manifest pack, string status)
     {
+        _pendingPacks.Add(pack);
         ChangesMade = true;
         SetStatus(status + " Save to Stream Deck when you're done.");
     }
@@ -648,7 +655,7 @@ public class Form1 : Form
         var count = _queue.Count;
         _queue.Clear();
         ShowSelectedPack();
-        MarkChanged($"Added {count} {(count == 1 ? "icon" : "icons")} to {pack.Name}.");
+        MarkChanged(pack, $"Added {count} {(count == 1 ? "icon" : "icons")} to {pack.Name}.");
     }
 
     private void ClearQueue()
@@ -684,7 +691,7 @@ public class Form1 : Form
         }
 
         ShowSelectedPack(keepSelection: true);
-        MarkChanged(indices.Count == 1 ? $"Updated {drafts[0].Name}." : $"Updated {indices.Count} icons.");
+        MarkChanged(pack, indices.Count == 1 ? $"Updated {drafts[0].Name}." : $"Updated {indices.Count} icons.");
     }
 
     private void DeleteSelectedIcons()
@@ -703,7 +710,7 @@ public class Form1 : Form
             pack.RemoveIcon(index);
 
         ShowSelectedPack();
-        MarkChanged(indices.Count == 1 ? "Removed 1 icon." : $"Removed {indices.Count} icons.");
+        MarkChanged(pack, indices.Count == 1 ? "Removed 1 icon." : $"Removed {indices.Count} icons.");
     }
 
     #endregion
@@ -727,7 +734,7 @@ public class Form1 : Form
         created.DisposeAllImages();
         _allPacks.Add(loaded);
         RefreshPackList(loaded);
-        MarkChanged($"Created {loaded.Name}.");
+        MarkChanged(loaded, $"Created {loaded.Name}.");
     }
 
     private void EditPackDetails()
@@ -747,6 +754,7 @@ public class Form1 : Form
 
         if (renamed)
         {
+            _pendingRemovals++;
             var oldPath = pack.IconPackPath;
             pack.NewPackPath(_streamDeckPacksPath);
             pack.SaveManifest();
@@ -754,7 +762,7 @@ public class Form1 : Form
         }
 
         RefreshPackList(pack);
-        MarkChanged($"Updated details for {pack.Name}.");
+        MarkChanged(pack, $"Updated details for {pack.Name}.");
     }
 
     private void ChangeEmblem()
@@ -784,7 +792,7 @@ public class Form1 : Form
         }
 
         ShowSelectedPack(keepSelection: true);
-        MarkChanged($"Changed the emblem for {pack.Name}.");
+        MarkChanged(pack, $"Changed the emblem for {pack.Name}.");
     }
 
     private void DeletePack()
@@ -805,6 +813,8 @@ public class Form1 : Form
         pack.DisposeAllImages();
         new DirectoryInfo(path).Delete(true);
         _allPacks.RemoveAt(index);
+        _pendingPacks.Remove(pack);
+        _pendingRemovals++;
 
         RefreshPackList(_allPacks.Count > 0 ? _allPacks[Math.Min(index, _allPacks.Count - 1)] : null);
         ChangesMade = true;
@@ -895,6 +905,7 @@ public class Form1 : Form
             var loaded = new Manifest(import.IconPackPath);
             _allPacks.Add(loaded);
             RefreshPackList(loaded);
+            _pendingPacks.Add(loaded);
             ChangesMade = true;
             var skippedNote = skipped == 0 ? "" : $" Skipped {skipped} icon{(skipped == 1 ? "" : "s")} that {(skipped == 1 ? "was" : "were")} missing or not a {ImageHelper.FormatList} image.";
             SetStatus($"Imported {loaded.Name} with {loaded.Icons.Count} icons.{skippedNote} Save to Stream Deck to see it.", skipped == 0 ? Theme.Success : Theme.Warning);
@@ -921,24 +932,38 @@ public class Form1 : Form
         ChangesMade = false;
     }
 
-    private void SaveToStreamDeck()
+    /// <summary>Opens the Save dialog. Returns false if the user cancelled.</summary>
+    private bool SaveToStreamDeck()
     {
-        try
-        {
-            SaveAllPacks();
-        }
-        catch (Exception ex)
-        {
-            MessageBox.Show(this, "Couldn't save your icon packs:\n" + ex.Message, "Save failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            return;
-        }
-
-        SetStatus("Saved. Restart Stream Deck to see your changes.", Theme.Success);
-
-        using var dialog = new RestartDialog(_allPacks.Count);
+        var changed = _allPacks.Where(_pendingPacks.Contains).ToList();
+        using var dialog = new ApplyDialog(changed, _pendingRemovals, _settings.LastApplyMode, SaveAllPacks, p => p.SaveManifest());
         dialog.ShowDialog(this);
-        if (dialog.Restarted)
-            SetStatus("Saved and restarted Stream Deck. Your icons are in its icon library.", Theme.Success);
+
+        if (dialog.Outcome == ApplyOutcome.Cancelled)
+            return false;
+
+        _settings.LastApplyMode = dialog.ChosenMode;
+        _settings.Save();
+        _pendingPacks.Clear();
+        _pendingRemovals = 0;
+        ChangesMade = false;
+
+        switch (dialog.Outcome)
+        {
+            case ApplyOutcome.Restarted:
+                SetStatus("Saved and restarted Stream Deck. Your changes are in its icon library.", Theme.Success);
+                break;
+            case ApplyOutcome.AppliedLive:
+                SetStatus(changed.Count == 1
+                    ? $"Applied {changed[0].Name} live. It's in Stream Deck's icon library now."
+                    : $"Applied {changed.Count} packs live. They're in Stream Deck's icon library now.", Theme.Success);
+                break;
+            default:
+                SetStatus("Saved. Some changes will show up after Stream Deck restarts.", Theme.Warning);
+                break;
+        }
+
+        return true;
     }
 
     private void OnFormClosing(object? sender, FormClosingEventArgs e)
@@ -955,32 +980,10 @@ public class Form1 : Form
                 return;
             }
 
-            if (answer == DialogResult.Yes)
+            if (answer == DialogResult.Yes && !SaveToStreamDeck())
             {
-                try
-                {
-                    SaveAllPacks();
-                }
-                catch (Exception ex)
-                {
-                    MessageBox.Show(this, "Couldn't save your icon packs:\n" + ex.Message, "Save failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                    e.Cancel = true;
-                    return;
-                }
-
-                if (StreamDeckApp.IsRunning && MessageBox.Show(this,
-                        "Saved. Restart Stream Deck now so it loads your changes?",
-                        "Restart Stream Deck", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
-                {
-                    try
-                    {
-                        StreamDeckApp.RestartAsync().GetAwaiter().GetResult();
-                    }
-                    catch (Exception ex)
-                    {
-                        MessageBox.Show(this, ex.Message, "Couldn't restart Stream Deck", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                    }
-                }
+                e.Cancel = true;
+                return;
             }
         }
 

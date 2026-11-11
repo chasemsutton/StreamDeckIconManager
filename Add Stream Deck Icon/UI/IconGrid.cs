@@ -250,15 +250,31 @@ internal sealed class IconGrid : ScrollableControl
     protected override void OnMouseLeave(EventArgs e)
     {
         base.OnMouseLeave(e);
+        HideTooltip();
         if (_hover < 0)
             return;
         _hover = -1;
         Invalidate();
     }
 
+    protected override void OnVisibleChanged(EventArgs e)
+    {
+        HideTooltip();
+        base.OnVisibleChanged(e);
+    }
+
+    /// <summary>Removes the tooltip; it comes back on the next hover over an icon.</summary>
+    private void HideTooltip()
+    {
+        _tip.Hide(this);
+        _tip.SetToolTip(this, null);
+    }
+
     protected override void OnMouseDown(MouseEventArgs e)
     {
         base.OnMouseDown(e);
+        // A click often opens something (a dialog or menu); don't leave the tooltip hanging over it.
+        HideTooltip();
         Focus();
         var hit = HitTest(e.Location);
 
@@ -347,7 +363,7 @@ internal sealed class IconGrid : ScrollableControl
     }
 
     protected override void OnGotFocus(EventArgs e) { base.OnGotFocus(e); Invalidate(); }
-    protected override void OnLostFocus(EventArgs e) { base.OnLostFocus(e); Invalidate(); }
+    protected override void OnLostFocus(EventArgs e) { base.OnLostFocus(e); HideTooltip(); Invalidate(); }
 
     private void EnsureVisible(int index)
     {
