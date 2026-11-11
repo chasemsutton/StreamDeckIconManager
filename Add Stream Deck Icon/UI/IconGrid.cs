@@ -1,6 +1,10 @@
 namespace Add_Stream_Deck_Icon.UI;
 
-internal sealed record IconTile(Image Image, string Caption, string Tooltip);
+/// <summary>
+/// One icon in the grid. <paramref name="Data"/> and <paramref name="Extension"/> are the icon's
+/// file, used to play animated GIF/WEBP icons while the mouse is over them.
+/// </summary>
+internal sealed record IconTile(Image Image, string Caption, string Tooltip, byte[]? Data = null, string? Extension = null);
 
 /// <summary>
 /// Scrollable grid that shows each icon on a Stream Deck style key.
@@ -24,6 +28,12 @@ internal sealed class IconGrid : ScrollableControl
     private int _focus = -1;
     private int _hover = -1;
 
+    // Animation of the hovered icon (GIF/WEBP), if it has more than one frame.
+    private readonly System.Windows.Forms.Timer _animTimer = new();
+    private AnimatedPreview? _anim;
+    private int _animIndex = -1;
+    private int _animFrame;
+
     public IconGrid()
     {
         SetStyle(
@@ -36,6 +46,7 @@ internal sealed class IconGrid : ScrollableControl
         BackColor = Theme.Window;
         TabStop = true;
         Native.UseDarkScrollbars(this);
+        _animTimer.Tick += OnAnimationTick;
     }
 
     public event EventHandler? SelectionChanged;
@@ -49,6 +60,7 @@ internal sealed class IconGrid : ScrollableControl
 
     public void SetItems(IEnumerable<IconTile> items, bool keepSelection = false)
     {
+        StopAnimation();
         _items.Clear();
         _items.AddRange(items);
         if (!keepSelection)
@@ -182,7 +194,8 @@ internal sealed class IconGrid : ScrollableControl
             }
 
             var edge = selected ? Theme.Accent : i == _hover ? Theme.BorderStrong : Theme.KeyEdge;
-            Theme.DrawKey(g, key, _items[i].Image, 11 * s, edge, selected ? 2f * s : 1f * s);
+            var image = i == _animIndex && _anim is not null ? _anim.Frames[_animFrame] : _items[i].Image;
+            Theme.DrawKey(g, key, image, 11 * s, edge, selected ? 2f * s : 1f * s);
 
             if (i == _focus && Focused && ShowFocusCues && !selected)
             {
@@ -244,6 +257,9 @@ internal sealed class IconGrid : ScrollableControl
         _hover = hit;
         Cursor = hit >= 0 ? Cursors.Hand : Cursors.Default;
         _tip.SetToolTip(this, hit >= 0 ? _items[hit].Tooltip : null);
+        StopAnimation();
+        if (hit >= 0)
+            _ = StartAnimationAsync(hit);
         Invalidate();
     }
 
@@ -251,10 +267,62 @@ internal sealed class IconGrid : ScrollableControl
     {
         base.OnMouseLeave(e);
         HideTooltip();
+        StopAnimation();
         if (_hover < 0)
             return;
         _hover = -1;
         Invalidate();
+    }
+
+    /// <summary>Plays the icon's animation while it stays hovered. Decoding happens off the UI thread, once.</summary>
+    private async Task StartAnimationAsync(int index)
+    {
+        var tile = _items[index];
+        if (tile.Data is null || !AnimatedPreview.CanAnimate(tile.Extension))
+            return;
+
+        var anim = await AnimatedPreview.LoadAsync(tile.Data, tile.Extension);
+
+        // Still hovering the same icon, and the grid hasn't been refilled meanwhile?
+        if (anim is null || IsDisposed || _hover != index || index >= _items.Count || !ReferenceEquals(_items[index], tile))
+            return;
+
+        _anim = anim;
+        _animIndex = index;
+        _animFrame = 0;
+        _animTimer.Interval = Math.Max(20, anim.DurationsMs[0]);
+        _animTimer.Start();
+        InvalidateCell(index);
+    }
+
+    private void StopAnimation()
+    {
+        _animTimer.Stop();
+        if (_animIndex >= 0 && _animIndex < _items.Count)
+            InvalidateCell(_animIndex);
+        _anim = null;
+        _animIndex = -1;
+        _animFrame = 0;
+    }
+
+    private void OnAnimationTick(object? sender, EventArgs e)
+    {
+        if (_anim is null || _animIndex < 0)
+        {
+            _animTimer.Stop();
+            return;
+        }
+
+        _animFrame = (_animFrame + 1) % _anim.Frames.Count;
+        _animTimer.Interval = Math.Max(20, _anim.DurationsMs[_animFrame]);
+        InvalidateCell(_animIndex);
+    }
+
+    private void InvalidateCell(int index)
+    {
+        var cell = Rectangle.Round(CellBounds(index));
+        cell.Inflate((int)(6 * Dpi), (int)(6 * Dpi));
+        Invalidate(cell);
     }
 
     protected override void OnVisibleChanged(EventArgs e)
@@ -408,7 +476,10 @@ internal sealed class IconGrid : ScrollableControl
     protected override void Dispose(bool disposing)
     {
         if (disposing)
+        {
             _tip.Dispose();
+            _animTimer.Dispose();
+        }
         base.Dispose(disposing);
     }
 }

@@ -60,8 +60,42 @@ internal static class ImageHelper
         return bitmap;
     }
 
-    /// <summary>Decodes image bytes into a bitmap for display. Throws if they can't be read.</summary>
-    public static Bitmap Preview(byte[] data, string extension)
+    /// <summary>
+    /// Longest side of preview bitmaps: Stream Deck's recommended 144 px, doubled for high-DPI
+    /// screens. Previews are drawn on every repaint, so a 4K source image would make each one cost
+    /// about 50 ms (and 33 MB of memory) instead of under 1 ms.
+    /// </summary>
+    private const int MaxPreviewSize = 288;
+
+    /// <summary>
+    /// Decodes image bytes into a bitmap for display, no larger than <see cref="MaxPreviewSize"/>.
+    /// Throws if they can't be read. Only for showing in the app: files are saved from the original bytes.
+    /// </summary>
+    public static Bitmap Preview(byte[] data, string extension) => Shrink(DecodeFull(data, extension));
+
+    private static Bitmap Shrink(Bitmap source)
+    {
+        var longest = Math.Max(source.Width, source.Height);
+        if (longest <= MaxPreviewSize)
+            return source;
+
+        var scale = (float)MaxPreviewSize / longest;
+        var thumb = new Bitmap(Math.Max(1, (int)(source.Width * scale)), Math.Max(1, (int)(source.Height * scale)), PixelFormat.Format32bppPArgb);
+        using (var g = Graphics.FromImage(thumb))
+        {
+            g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+            g.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.HighQuality;
+            g.CompositingQuality = System.Drawing.Drawing2D.CompositingQuality.HighQuality;
+            using var attributes = new ImageAttributes();
+            attributes.SetWrapMode(System.Drawing.Drawing2D.WrapMode.TileFlipXY); // no dark fringe at the edges
+            g.DrawImage(source, new Rectangle(0, 0, thumb.Width, thumb.Height), 0, 0, source.Width, source.Height, GraphicsUnit.Pixel, attributes);
+        }
+
+        source.Dispose();
+        return thumb;
+    }
+
+    private static Bitmap DecodeFull(byte[] data, string extension)
     {
         var ext = extension.TrimStart('.').ToLowerInvariant();
         if (ext == "svg")

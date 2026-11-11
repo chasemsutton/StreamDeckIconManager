@@ -82,6 +82,7 @@ public partial class Form1 : Form
         Shown += async (_, _) =>
         {
             await CheckExistingGifsAsync();
+            CheckLargeImages();
             await CheckForUpdatesAsync(silentWhenCurrent: true);
         };
     }
@@ -571,7 +572,9 @@ public partial class Form1 : Form
         _grid.SetItems(pack.Icons.Select(i => new IconTile(
             i.Picture,
             i.Name,
-            $"{i.Name}\nTags: {IconDetailsDialog.FormatTags(i.Tags)}")), keepSelection);
+            $"{i.Name}\nTags: {IconDetailsDialog.FormatTags(i.Tags)}",
+            i.Data,
+            Path.GetExtension(i.Path))), keepSelection);
         _packList.Invalidate();
         UpdateQueueTray();
         UpdateIconActions();
@@ -651,13 +654,23 @@ public partial class Form1 : Form
         if (pack is null || _queue.Count == 0)
             return;
 
-        var drafts = _queue.Select(q => new IconDraft(q.Picture, q.Name, q.Tags)).ToList();
-        using (var dialog = new IconDetailsDialog(drafts, pack.Name, editing: false))
+        var drafts = _queue.Select(q => new IconDraft(q.Picture, q.Name, q.Tags, q.Data, Path.GetExtension(q.Path))).ToList();
+        var oversized = _queue.Count(q => IconResizer.IsOversized(q.Data, Path.GetExtension(q.Path)));
+        using (var dialog = new IconDetailsDialog(drafts, pack.Name, editing: false, oversized, _settings.KeepFullSizeImages))
         {
             if (dialog.ShowDialog(this) != DialogResult.OK)
                 return;
+
+            if (oversized > 0 && dialog.KeepFullSize != _settings.KeepFullSizeImages)
+            {
+                _settings.KeepFullSizeImages = dialog.KeepFullSize;
+                _settings.Save();
+            }
         }
 
+        // Resize first: an oversized animated GIF comes out as a 144 px animated WEBP, so it
+        // doesn't need converting afterwards.
+        var resized = await FitImagesAsync(_queue);
         var converted = await ConvertGifsAsync(_queue);
 
         for (var i = 0; i < drafts.Count; i++)
@@ -666,8 +679,85 @@ public partial class Form1 : Form
         var count = _queue.Count;
         _queue.Clear();
         ShowSelectedPack();
-        MarkChanged(pack, $"Added {count} {(count == 1 ? "icon" : "icons")} to {pack.Name}{ConvertedNote(converted)}.");
+        MarkChanged(pack, $"Added {count} {(count == 1 ? "icon" : "icons")} to {pack.Name}{ProcessingNote(resized, converted)}.");
     }
+
+    /// <summary>
+    /// Scales images larger than Stream Deck's 144 px icon size down to fit, unless the user chose
+    /// to keep full-size images. Animations keep every frame and its timing. Images that can't be
+    /// resized are left as they are. Returns how many were resized.
+    /// </summary>
+    private async Task<int> FitImagesAsync(IReadOnlyList<PackIcon> icons)
+    {
+        if (_settings.KeepFullSizeImages)
+            return 0;
+
+        var large = icons.Where(i => IconResizer.IsOversized(i.Data, Path.GetExtension(i.Path))).ToList();
+        if (large.Count == 0)
+            return 0;
+
+        SetStatus(large.Count == 1
+            ? $"Scaling 1 large image down to {IconResizer.TargetSize} px..."
+            : $"Scaling {large.Count} large images down to {IconResizer.TargetSize} px...");
+        UseWaitCursor = true;
+        Enabled = false;
+        var oldPictures = new List<Bitmap>();
+        var resized = 0;
+        try
+        {
+            foreach (var icon in large)
+            {
+                if (await IconResizer.FitWithPreviewAsync(icon.Data, Path.GetExtension(icon.Path)) is not { } fit)
+                    continue;
+
+                var (data, ext, picture) = fit;
+                oldPictures.Add(icon.Picture);
+                icon.Data = data;
+                icon.Picture = picture;
+                icon.Path = UniquePath(icons, icon, Path.ChangeExtension(icon.Path, "." + ext));
+                resized++;
+            }
+        }
+        finally
+        {
+            Enabled = true;
+            UseWaitCursor = false;
+        }
+
+        // The queue tray may still be showing the old previews; swap them before freeing them.
+        UpdateQueueTray();
+        foreach (var old in oldPictures)
+            old.Dispose();
+
+        return resized;
+    }
+
+    /// <summary>
+    /// Avoids a clash when a file changes extension (say "logo.gif" becoming "logo.png" next to an
+    /// existing "logo.png") by adding a number.
+    /// </summary>
+    private static string UniquePath(IEnumerable<PackIcon> icons, PackIcon self, string path)
+    {
+        var taken = icons.Where(i => !ReferenceEquals(i, self)).Select(i => Path.GetFileName(i.Path)).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (!taken.Contains(Path.GetFileName(path)))
+            return path;
+
+        var folder = Path.GetDirectoryName(path) ?? "";
+        var stem = Path.GetFileNameWithoutExtension(path);
+        var ext = Path.GetExtension(path);
+        for (var n = 2; ; n++)
+        {
+            var candidate = $"{stem} ({n}){ext}";
+            if (!taken.Contains(candidate))
+                return folder.Length == 0 ? candidate : Path.Combine(folder, candidate);
+        }
+    }
+
+    /// <summary>Scales an emblem image down to Stream Deck's icon size, unless keeping full-size images.</summary>
+    private Task<(byte[] Data, string Extension, Bitmap Preview)?> FitEmblemAsync(byte[] data, string extension) =>
+        _settings.KeepFullSizeImages
+            ? Task.FromResult<(byte[] Data, string Extension, Bitmap Preview)?>(null)
+            : IconResizer.FitWithPreviewAsync(data, extension);
 
     /// <summary>
     /// Converts GIFs to lossless animated WebP (on by default; Stream Deck's icon library can't
@@ -759,12 +849,117 @@ public partial class Form1 : Form
             failed > 0 ? Theme.Warning : Theme.Success);
     }
 
-    private static string ConvertedNote(int converted) => converted switch
+    /// <summary>
+    /// Images in existing packs that are larger than Stream Deck needs: ask once whether to shrink
+    /// them, and never again either way (full-size images the user adds later are on purpose).
+    /// </summary>
+    private void CheckLargeImages()
     {
-        0 => "",
-        1 => " (1 GIF converted to animated WEBP so Stream Deck can preview it)",
-        _ => $" ({converted} GIFs converted to animated WEBP so Stream Deck can preview them)"
-    };
+        if (_settings.ExistingLargeImages is not null || _settings.KeepFullSizeImages)
+            return;
+
+        // GIFs the user chose to keep stay GIFs; shrinking an animated one would turn it into WEBP.
+        var keepGifs = _settings.ExistingGifs == ExistingGifsChoice.Keep || !_settings.ConvertGifsToWebp;
+        var large = _allPacks
+            .Select(p => new LargeImages(p,
+                p.Icons.Where(i => !(keepGifs && GifConverter.IsGif(i.Path)) && IconResizer.IsOversized(i.Data, Path.GetExtension(i.Path))).ToList(),
+                IconResizer.IsOversized(p.EmblemData, p.EmblemExtension)))
+            .Where(l => l.Icons.Count > 0 || l.Emblem)
+            .ToList();
+        if (large.Count == 0)
+            return;
+
+        var before = large.Sum(l => l.Bytes);
+        List<ShrunkImage> results;
+        int failed;
+        using (var dialog = new ShrinkImagesDialog(large))
+        {
+            dialog.ShowDialog(this);
+            if (dialog.Choice is null)
+                return; // Closed without choosing: ask again next time.
+
+            _settings.ExistingLargeImages = dialog.Choice;
+            _settings.Save();
+            if (dialog.Choice == ExistingLargeImagesChoice.Keep)
+            {
+                SetStatus($"Left your large images as they are. New images you add are still scaled to {IconResizer.TargetSize} px unless you choose to keep them full size.");
+                return;
+            }
+
+            results = dialog.Results;
+            failed = dialog.Failed;
+        }
+
+        // Apply everything at once, then refresh the screen before freeing the old previews.
+        var oldPictures = new List<Image>();
+        var changed = new HashSet<Manifest>();
+        var saved = 0L;
+        foreach (var r in results)
+        {
+            if (!_allPacks.Contains(r.Pack) || (r.Icon is not null && !r.Pack.Icons.Contains(r.Icon)))
+            {
+                r.Preview.Dispose(); // The pack was reloaded from disk meanwhile.
+                continue;
+            }
+
+            if (r.Icon is null)
+            {
+                saved += r.Pack.EmblemData.Length - r.Data.Length;
+                var oldEmblem = r.Pack.Emblem;
+                r.Pack.SetEmblem(r.Data, r.Extension, r.Preview, disposeOld: false);
+                oldPictures.Add(oldEmblem);
+            }
+            else
+            {
+                saved += r.Icon.Data.Length - r.Data.Length;
+                oldPictures.Add(r.Icon.Picture);
+                r.Icon.Data = r.Data;
+                r.Icon.Picture = r.Preview;
+                r.Icon.Path = Path.ChangeExtension(r.Icon.Path, "." + r.Extension);
+            }
+
+            changed.Add(r.Pack);
+        }
+
+        if (changed.Count > 0)
+        {
+            foreach (var pack in changed)
+                _pendingPacks.Add(pack);
+            ChangesMade = true;
+            RefreshPackList(SelectedPack);
+        }
+
+        foreach (var old in oldPictures)
+            old.Dispose();
+
+        var shrunk = results.Count;
+        if (shrunk == 0)
+        {
+            if (failed > 0)
+                SetStatus($"Couldn't shrink {failed} image{(failed == 1 ? "" : "s")}; {(failed == 1 ? "it was" : "they were")} left as {(failed == 1 ? "it is" : "they are")}.", Theme.Warning);
+            return;
+        }
+
+        var failedNote = failed > 0 ? $" {failed} couldn't be resized and stayed full size." : "";
+        SetStatus($"Shrank {shrunk} image{(shrunk == 1 ? "" : "s")} in {changed.Count} pack{(changed.Count == 1 ? "" : "s")}, " +
+                  $"from {ShrinkImagesDialog.FormatSize(before)} to {ShrinkImagesDialog.FormatSize(Math.Max(0, before - saved))}.{failedNote} Save to Stream Deck to apply.",
+            failed > 0 ? Theme.Warning : Theme.Success);
+    }
+
+    /// <summary>A note for the status line about images that were resized or converted, or "".</summary>
+    private static string ProcessingNote(int resized, int converted)
+    {
+        var parts = new List<string>();
+        if (resized > 0)
+            parts.Add(resized == 1
+                ? $"1 large image scaled down to {IconResizer.TargetSize} px"
+                : $"{resized} large images scaled down to {IconResizer.TargetSize} px");
+        if (converted > 0)
+            parts.Add(converted == 1
+                ? "1 GIF converted to animated WEBP so Stream Deck can preview it"
+                : $"{converted} GIFs converted to animated WEBP so Stream Deck can preview them");
+        return parts.Count == 0 ? "" : $" ({string.Join("; ", parts)})";
+    }
 
     private void ClearQueue()
     {
@@ -786,7 +981,8 @@ public partial class Form1 : Form
             return;
 
         var indices = _grid.SelectedIndices.OrderBy(i => i).ToList();
-        var drafts = indices.Select(i => new IconDraft(pack.Icons[i].Picture, pack.Icons[i].Name, pack.Icons[i].Tags)).ToList();
+        var drafts = indices.Select(i => new IconDraft(pack.Icons[i].Picture, pack.Icons[i].Name, pack.Icons[i].Tags,
+            pack.Icons[i].Data, Path.GetExtension(pack.Icons[i].Path))).ToList();
 
         using var dialog = new IconDetailsDialog(drafts, pack.Name, editing: true);
         if (dialog.ShowDialog(this) != DialogResult.OK)
@@ -875,7 +1071,7 @@ public partial class Form1 : Form
         MarkChanged(pack, $"Updated details for {pack.Name}.");
     }
 
-    private void ChangeEmblem()
+    private async void ChangeEmblem()
     {
         var pack = SelectedPack;
         if (pack is null)
@@ -890,10 +1086,13 @@ public partial class Form1 : Form
         if (dialog.ShowDialog(this) != DialogResult.OK)
             return;
 
+        byte[] data;
+        string ext;
+        Bitmap preview;
         try
         {
-            var (data, preview) = ImageHelper.Load(dialog.FileName);
-            pack.SetEmblem(data, ImageHelper.ExtensionOf(dialog.FileName), preview);
+            (data, preview) = ImageHelper.Load(dialog.FileName);
+            ext = ImageHelper.ExtensionOf(dialog.FileName);
         }
         catch (Exception ex)
         {
@@ -901,8 +1100,33 @@ public partial class Form1 : Form
             return;
         }
 
+        var resized = false;
+        UseWaitCursor = true;
+        Enabled = false;
+        try
+        {
+            if (await FitEmblemAsync(data, ext) is { } fit)
+            {
+                preview.Dispose();
+                (data, ext, preview) = fit;
+                resized = true;
+            }
+        }
+        finally
+        {
+            Enabled = true;
+            UseWaitCursor = false;
+        }
+
+        if (!_allPacks.Contains(pack))
+        {
+            preview.Dispose(); // The pack went away (deleted or reloaded) meanwhile.
+            return;
+        }
+
+        pack.SetEmblem(data, ext, preview);
         ShowSelectedPack(keepSelection: true);
-        MarkChanged(pack, $"Changed the emblem for {pack.Name}.");
+        MarkChanged(pack, $"Changed the emblem for {pack.Name}{(resized ? $" (scaled down to {IconResizer.TargetSize} px)" : "")}.");
     }
 
     private void DeletePack()
@@ -1010,7 +1234,10 @@ public partial class Form1 : Form
                 import.ChangePackName(rename.PackName);
             }
 
+            var resized = await FitImagesAsync(import.Icons);
             var converted = await ConvertGifsAsync(import.Icons);
+            if (await FitEmblemAsync(import.EmblemData, import.EmblemExtension) is { } emblem)
+                import.SetEmblem(emblem.Data, emblem.Extension, emblem.Preview);
             import.NewPackPath(_streamDeckPacksPath);
             import.SaveManifest();
             var loaded = new Manifest(import.IconPackPath);
@@ -1020,7 +1247,7 @@ public partial class Form1 : Form
             RememberPackStamps();
             ChangesMade = true;
             var skippedNote = skipped == 0 ? "" : $" Skipped {skipped} icon{(skipped == 1 ? "" : "s")} that {(skipped == 1 ? "was" : "were")} missing or not a {ImageHelper.FormatList} image.";
-            SetStatus($"Imported {loaded.Name} with {loaded.Icons.Count} icons{ConvertedNote(converted)}.{skippedNote} Save to Stream Deck to see it.", skipped == 0 ? Theme.Success : Theme.Warning);
+            SetStatus($"Imported {loaded.Name} with {loaded.Icons.Count} icons{ProcessingNote(resized, converted)}.{skippedNote} Save to Stream Deck to see it.", skipped == 0 ? Theme.Success : Theme.Warning);
         }
         catch (Exception ex)
         {

@@ -3,14 +3,20 @@ namespace Add_Stream_Deck_Icon.UI;
 /// <summary>An icon being named: its image plus the name and tags the user settles on.</summary>
 internal sealed class IconDraft
 {
-    public IconDraft(Image picture, string name, IEnumerable<string> tags)
+    public IconDraft(Image picture, string name, IEnumerable<string> tags, byte[]? data = null, string? extension = null)
     {
         Picture = picture;
         Name = name;
         Tags = tags.ToArray();
+        Data = data;
+        Extension = extension;
     }
 
     public Image Picture { get; }
+
+    /// <summary>The image file, so animated GIF/WEBP icons can play in the preview.</summary>
+    public byte[]? Data { get; }
+    public string? Extension { get; }
     public string Name { get; set; }
     public string[] Tags { get; set; }
 }
@@ -36,7 +42,14 @@ internal sealed class IconDetailsDialog : ThemedDialog
     private readonly ThemedButton? _useDefaults;
     private int _index;
 
-    public IconDetailsDialog(IReadOnlyList<IconDraft> drafts, string packName, bool editing)
+    /// <summary>
+    /// The user's choice for "Keep full-size images" (only offered when adding images larger than
+    /// Stream Deck's 144 px icon size).
+    /// </summary>
+    public bool KeepFullSize { get; private set; }
+
+    public IconDetailsDialog(IReadOnlyList<IconDraft> drafts, string packName, bool editing,
+        int oversizedCount = 0, bool keepFullSize = false)
         : base(editing ? "Edit name and tags" : $"Add icons to {packName}",
             "Tags are what you type in the Stream Deck icon search to find this icon.",
             520)
@@ -95,6 +108,10 @@ internal sealed class IconDetailsDialog : ThemedDialog
         row.Controls.Add(fields, 1, 0);
         AddBody(row);
 
+        KeepFullSize = keepFullSize;
+        if (!editing && oversizedCount > 0)
+            AddBody(BuildSizeChoice(oversizedCount, keepFullSize));
+
         if (!editing && drafts.Count > 1)
         {
             _useDefaults = new ThemedButton("Keep file names for the rest", ButtonKind.Ghost);
@@ -128,6 +145,71 @@ internal sealed class IconDetailsDialog : ThemedDialog
         Complete();
         ShowDraft(0);
         Shown += (_, _) => _name.FocusInput();
+    }
+
+    /// <summary>
+    /// Explains that large images get scaled to Stream Deck's icon size, with a "keep full size"
+    /// checkbox that reveals a warning when ticked.
+    /// </summary>
+    private Control BuildSizeChoice(int oversizedCount, bool keepFullSize)
+    {
+        var panel = new TableLayoutPanel
+        {
+            ColumnCount = 1,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            Margin = new Padding(0, 6, 0, 4)
+        };
+        panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+
+        var info = new Label
+        {
+            Text = (oversizedCount == 1 ? "1 image is" : $"{oversizedCount} images are") +
+                   $" larger than Stream Deck's {IconResizer.TargetSize} × {IconResizer.TargetSize} px icon size and will be scaled down to fit. Nothing is cropped.",
+            AutoSize = true,
+            MaximumSize = new Size(520, 0),
+            Font = Theme.Small,
+            ForeColor = Theme.TextMuted,
+            Margin = new Padding(0, 0, 0, 6)
+        };
+
+        var keep = new CheckBox
+        {
+            Text = "Keep full-size images",
+            Checked = keepFullSize,
+            AutoSize = true,
+            Font = Theme.Body,
+            ForeColor = Theme.Text,
+            FlatStyle = FlatStyle.Flat,
+            Cursor = Cursors.Hand,
+            Margin = new Padding(0, 0, 0, 4)
+        };
+        keep.FlatAppearance.BorderColor = Theme.BorderStrong;
+        keep.FlatAppearance.CheckedBackColor = Theme.Accent;
+        keep.FlatAppearance.MouseOverBackColor = Theme.RaisedHover;
+
+        var warning = new Label
+        {
+            Text = "Large images can make this app and Stream Deck slow and use a lot of memory. " +
+                   "Stream Deck shows icons at 144 px, so the extra detail isn't visible on your keys.",
+            AutoSize = true,
+            MaximumSize = new Size(520, 0),
+            Font = Theme.Small,
+            ForeColor = Theme.Warning,
+            Visible = keepFullSize,
+            Margin = new Padding(0, 0, 0, 0)
+        };
+
+        keep.CheckedChanged += (_, _) =>
+        {
+            KeepFullSize = keep.Checked;
+            warning.Visible = keep.Checked;
+        };
+
+        panel.Controls.Add(info, 0, 0);
+        panel.Controls.Add(keep, 0, 1);
+        panel.Controls.Add(warning, 0, 2);
+        return panel;
     }
 
     /// <summary>Turns a comma separated tag string into clean tags, always including "custom".</summary>
@@ -170,6 +252,7 @@ internal sealed class IconDetailsDialog : ThemedDialog
         _index = index;
         var draft = _drafts[index];
         _preview.Image = draft.Picture;
+        _preview.PlayIfAnimated(draft.Data, draft.Extension);
         _name.Value = draft.Name;
         _tags.Value = FormatTags(draft.Tags);
         _name.ErrorText = null;
@@ -186,13 +269,30 @@ internal sealed class IconDetailsDialog : ThemedDialog
         _next.Glyph = last && !_editing ? Theme.Glyphs.Add : null;
     }
 
+    /// <summary>Large key preview. Animated GIF/WEBP icons play continuously here.</summary>
     private sealed class KeyPreviewBox : Control
     {
+        private readonly System.Windows.Forms.Timer _timer = new();
         private Image? _image;
+        private AnimatedPreview? _anim;
+        private int _frame;
+        private int _playToken;
 
         public KeyPreviewBox()
         {
             SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
+            _timer.Tick += (_, _) =>
+            {
+                if (_anim is null)
+                {
+                    _timer.Stop();
+                    return;
+                }
+
+                _frame = (_frame + 1) % _anim.Frames.Count;
+                _timer.Interval = Math.Max(20, _anim.DurationsMs[_frame]);
+                Invalidate();
+            };
         }
 
         public Image? Image
@@ -201,13 +301,43 @@ internal sealed class IconDetailsDialog : ThemedDialog
             set { _image = value; Invalidate(); }
         }
 
+        /// <summary>Starts playing the icon if it's an animated GIF/WEBP; stops any previous one.</summary>
+        public async void PlayIfAnimated(byte[]? data, string? extension)
+        {
+            var token = ++_playToken;
+            _timer.Stop();
+            _anim = null;
+            _frame = 0;
+            Invalidate();
+
+            if (data is null || !AnimatedPreview.CanAnimate(extension))
+                return;
+
+            var anim = await AnimatedPreview.LoadAsync(data, extension);
+            if (anim is null || IsDisposed || token != _playToken)
+                return;
+
+            _anim = anim;
+            _timer.Interval = Math.Max(20, anim.DurationsMs[0]);
+            _timer.Start();
+            Invalidate();
+        }
+
         protected override void OnPaint(PaintEventArgs e)
         {
             var g = e.Graphics;
             var s = DeviceDpi / 96f;
             g.Clear(Parent?.BackColor ?? Theme.Window);
             Theme.HighQuality(g);
-            Theme.DrawKey(g, new RectangleF(1, 1, Width - 2, Height - 2), _image, 20 * s, Theme.KeyEdge, 1.5f * s);
+            var image = _anim is not null ? _anim.Frames[_frame] : _image;
+            Theme.DrawKey(g, new RectangleF(1, 1, Width - 2, Height - 2), image, 20 * s, Theme.KeyEdge, 1.5f * s);
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+                _timer.Dispose();
+            base.Dispose(disposing);
         }
     }
 }

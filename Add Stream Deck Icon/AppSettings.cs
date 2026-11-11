@@ -32,6 +32,16 @@ internal enum ExistingGifsChoice
     Keep
 }
 
+/// <summary>The one-time answer about images in existing packs that are larger than Stream Deck needs.</summary>
+internal enum ExistingLargeImagesChoice
+{
+    /// <summary>They were scaled down to 144 px.</summary>
+    Shrink,
+
+    /// <summary>Left at full size.</summary>
+    Keep
+}
+
 /// <summary>
 /// Per-user settings, stored outside the install folder so installs and updates don't reset them.
 /// </summary>
@@ -57,10 +67,24 @@ internal sealed class AppSettings
     public bool ConvertGifsToWebp { get; set; } = true;
 
     /// <summary>
+    /// Keep images at their original size when adding or importing them, instead of scaling them
+    /// down to Stream Deck's 144 px icon size. Off by default: large images slow down this app and
+    /// Stream Deck and use a lot of memory.
+    /// </summary>
+    public bool KeepFullSizeImages { get; set; }
+
+    /// <summary>
     /// The answer to "convert the GIFs already in your packs?". Null until the user chooses,
     /// so the question is asked once and then never again.
     /// </summary>
     public ExistingGifsChoice? ExistingGifs { get; set; }
+
+    /// <summary>
+    /// The answer to "shrink the large images already in your packs?". Asked once; null until the
+    /// user chooses. Unlike GIFs, it isn't repeated later, so full-size images the user adds on
+    /// purpose stay that way.
+    /// </summary>
+    public ExistingLargeImagesChoice? ExistingLargeImages { get; set; }
 
     /// <summary>The Save option used last time, offered first next time. Null until first save.</summary>
     public ApplyMode? LastApplyMode { get; set; }

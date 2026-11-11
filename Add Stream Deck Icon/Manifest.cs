@@ -106,14 +106,18 @@ internal sealed class Manifest
         Icons.RemoveAt(index);
     }
 
-    /// <summary>Replaces the emblem. Takes ownership of <paramref name="preview"/>.</summary>
-    public void SetEmblem(byte[] data, string extension, Image preview)
+    /// <summary>
+    /// Replaces the emblem. Takes ownership of <paramref name="preview"/>. With
+    /// <paramref name="disposeOld"/> false the caller frees the old preview (once nothing shows it).
+    /// </summary>
+    public void SetEmblem(byte[] data, string extension, Image preview, bool disposeOld = true)
     {
         var old = Emblem;
         EmblemData = data;
         EmblemExtension = extension.TrimStart('.').ToLowerInvariant();
         Emblem = preview;
-        old?.Dispose();
+        if (disposeOld)
+            old?.Dispose();
     }
 
     private void UseDefaultEmblem()

@@ -11,6 +11,9 @@ broken images in a pack's icon grid).
   "WebP release signing key <webp-discuss@webmproject.org>", fingerprint
   `6B0E 6B70 976D E303 EDF2 F601 F9C3 D6BD B823 2B5D`
 - `gif2webp.exe` SHA-256: `C00667DC15C509EF979A153F726B9F165FB16E521EDC4986D9BC7ACC12725CA3`
+- `img2webp.exe` (same archive, `bin/img2webp.exe`) SHA-256: `3096525017A1F79EC9703E082D73B93E44394BCC40140FA68AB23A341301D95A`.
+  The app uses it to rebuild animated icons at Stream Deck's 144 px size, frame by frame with
+  each frame's original duration.
 - License: BSD 3-clause (`COPYING.txt`) with the WebM patent grant (`PATENTS.txt`), taken from
   the libwebp source at tag `v1.5.0`.
 
