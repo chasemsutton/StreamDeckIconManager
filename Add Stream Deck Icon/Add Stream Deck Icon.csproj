@@ -33,6 +33,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Google's gif2webp (see tools\gif2webp\README.md), shipped next to the app. -->
+    <None Include="tools\gif2webp\**" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="SkiaSharp" Version="2.88.8" />
     <PackageReference Include="Svg.Skia" Version="1.0.0.18" />
   </ItemGroup>

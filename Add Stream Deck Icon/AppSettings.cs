@@ -40,6 +40,12 @@ internal sealed class AppSettings
 
     public UpdateChannel UpdateChannel { get; set; } = UpdateChannel.Stable;
 
+    /// <summary>
+    /// Convert GIFs to lossless animated WebP when they're added or imported, so Stream Deck's
+    /// icon library can preview them. On by default.
+    /// </summary>
+    public bool ConvertGifsToWebp { get; set; } = true;
+
     /// <summary>The Save option used last time, offered first next time. Null until first save.</summary>
     public ApplyMode? LastApplyMode { get; set; }
 

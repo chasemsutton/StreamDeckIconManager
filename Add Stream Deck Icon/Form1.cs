@@ -638,16 +638,20 @@ public class Form1 : Form
             SetStatus($"{_queue.Count} {(_queue.Count == 1 ? "image" : "images")} ready. Click Add to name them and put them in the pack.");
     }
 
-    private void AddQueuedIcons()
+    private async void AddQueuedIcons()
     {
         var pack = SelectedPack;
         if (pack is null || _queue.Count == 0)
             return;
 
         var drafts = _queue.Select(q => new IconDraft(q.Picture, q.Name, q.Tags)).ToList();
-        using var dialog = new IconDetailsDialog(drafts, pack.Name, editing: false);
-        if (dialog.ShowDialog(this) != DialogResult.OK)
-            return;
+        using (var dialog = new IconDetailsDialog(drafts, pack.Name, editing: false))
+        {
+            if (dialog.ShowDialog(this) != DialogResult.OK)
+                return;
+        }
+
+        var converted = await ConvertGifsAsync(_queue);
 
         for (var i = 0; i < drafts.Count; i++)
             pack.AddIcon(drafts[i].Name, drafts[i].Tags, _queue[i]);
@@ -655,8 +659,39 @@ public class Form1 : Form
         var count = _queue.Count;
         _queue.Clear();
         ShowSelectedPack();
-        MarkChanged(pack, $"Added {count} {(count == 1 ? "icon" : "icons")} to {pack.Name}.");
+        MarkChanged(pack, $"Added {count} {(count == 1 ? "icon" : "icons")} to {pack.Name}{ConvertedNote(converted)}.");
     }
+
+    /// <summary>
+    /// Converts GIFs to lossless animated WebP (on by default; Stream Deck's icon library can't
+    /// preview GIFs in a pack). The window is disabled meanwhile; large GIFs take a few seconds.
+    /// </summary>
+    private async Task<int> ConvertGifsAsync(IEnumerable<PackIcon> icons)
+    {
+        var gifs = icons.Where(i => GifConverter.IsGif(i.Path)).ToList();
+        if (!_settings.ConvertGifsToWebp || gifs.Count == 0 || !GifConverter.IsAvailable)
+            return 0;
+
+        SetStatus(gifs.Count == 1 ? "Converting 1 GIF to animated WEBP..." : $"Converting {gifs.Count} GIFs to animated WEBP...");
+        UseWaitCursor = true;
+        Enabled = false;
+        try
+        {
+            return await GifConverter.ConvertAllAsync(gifs);
+        }
+        finally
+        {
+            Enabled = true;
+            UseWaitCursor = false;
+        }
+    }
+
+    private static string ConvertedNote(int converted) => converted switch
+    {
+        0 => "",
+        1 => " (1 GIF converted to animated WEBP so Stream Deck can preview it)",
+        _ => $" ({converted} GIFs converted to animated WEBP so Stream Deck can preview them)"
+    };
 
     private void ClearQueue()
     {
@@ -850,7 +885,7 @@ public class Form1 : Form
         }
     }
 
-    private void ImportPack(string? packFile = null)
+    private async void ImportPack(string? packFile = null)
     {
         if (packFile is null)
         {
@@ -900,6 +935,7 @@ public class Form1 : Form
                 import.ChangePackName(rename.PackName);
             }
 
+            var converted = await ConvertGifsAsync(import.Icons);
             import.NewPackPath(_streamDeckPacksPath);
             import.SaveManifest();
             var loaded = new Manifest(import.IconPackPath);
@@ -908,7 +944,7 @@ public class Form1 : Form
             _pendingPacks.Add(loaded);
             ChangesMade = true;
             var skippedNote = skipped == 0 ? "" : $" Skipped {skipped} icon{(skipped == 1 ? "" : "s")} that {(skipped == 1 ? "was" : "were")} missing or not a {ImageHelper.FormatList} image.";
-            SetStatus($"Imported {loaded.Name} with {loaded.Icons.Count} icons.{skippedNote} Save to Stream Deck to see it.", skipped == 0 ? Theme.Success : Theme.Warning);
+            SetStatus($"Imported {loaded.Name} with {loaded.Icons.Count} icons{ConvertedNote(converted)}.{skippedNote} Save to Stream Deck to see it.", skipped == 0 ? Theme.Success : Theme.Warning);
         }
         catch (Exception ex)
         {
