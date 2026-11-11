@@ -14,6 +14,10 @@
 
   <ItemGroup>
     <Compile Include="..\shared\ReleaseNaming.cs" Link="ReleaseNaming.cs" />
+    <!-- Share the app's look: colours, fonts, buttons and the dark title bar. -->
+    <Compile Include="..\Add Stream Deck Icon\UI\Theme.cs" Link="UI\Theme.cs" />
+    <Compile Include="..\Add Stream Deck Icon\UI\ThemedButton.cs" Link="UI\ThemedButton.cs" />
+    <Compile Include="..\Add Stream Deck Icon\UI\Native.cs" Link="UI\Native.cs" />
   </ItemGroup>
 
   <ItemGroup>

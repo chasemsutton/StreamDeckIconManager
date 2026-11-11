@@ -5,99 +5,223 @@ using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Add_Stream_Deck_Icon.UI;
 using StreamDeckIconManager;
 
 namespace StreamDeckIconManager.Setup;
 
+/// <summary>Slim rounded progress bar in the app's accent colour.</summary>
+internal sealed class ProgressLine : Control
+{
+    private int _value;
+
+    public ProgressLine()
+    {
+        SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
+    }
+
+    public int Value
+    {
+        get => _value;
+        set { _value = Math.Clamp(value, 0, 100); Invalidate(); }
+    }
+
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        var g = e.Graphics;
+        g.Clear(Parent?.BackColor ?? Theme.Window);
+        Theme.HighQuality(g);
+        var radius = Height / 2f;
+        using (var track = Theme.RoundedRect(new RectangleF(0, 0, Width, Height), radius))
+        using (var trackBrush = new SolidBrush(Theme.Raised))
+            g.FillPath(trackBrush, track);
+
+        if (_value <= 0)
+            return;
+
+        var width = Math.Max(Height, Width * _value / 100f);
+        using var fill = Theme.RoundedRect(new RectangleF(0, 0, width, Height), radius);
+        using var fillBrush = new SolidBrush(Theme.Accent);
+        g.FillPath(fillBrush, fill);
+    }
+}
+
+/// <summary>Button strip along the bottom, with a hairline on top.</summary>
+internal sealed class FooterPanel : Panel
+{
+    public FooterPanel()
+    {
+        BackColor = Theme.Sidebar;
+        SetStyle(ControlStyles.ResizeRedraw | ControlStyles.OptimizedDoubleBuffer, true);
+    }
+
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        base.OnPaint(e);
+        using var pen = new Pen(Theme.Border);
+        e.Graphics.DrawLine(pen, 0, 0, Width, 0);
+    }
+}
+
+/// <summary>
+/// Setup window, styled like the app. While it works there is no Install button and Close is
+/// greyed out; after a failure or cancel, "Try again" appears.
+/// </summary>
 internal sealed class SetupForm : Form
 {
-    private readonly Label _titleLabel;
     private readonly Label _statusLabel;
-    private readonly ProgressBar _progressBar;
-    private readonly Button _installButton;
-    private readonly Button _closeButton;
+    private readonly ProgressLine _progressBar;
+    private readonly ThemedButton _installButton;
+    private readonly ThemedButton _closeButton;
+    private readonly int? _waitPid;
     private bool _busy;
 
-    public SetupForm()
+    public SetupForm(int? waitPid = null)
     {
-        Text = $"Stream Deck Icon Manager Setup v{InstallerVersion}";
-        using (var iconStream = typeof(SetupForm).Assembly.GetManifestResourceStream("AppIcon.ico"))
-        {
-            if (iconStream is not null)
-                Icon = new Icon(iconStream);
-        }
+        _waitPid = waitPid;
+
+        SuspendLayout();
+        AutoScaleDimensions = new SizeF(96F, 96F);
+        AutoScaleMode = AutoScaleMode.Dpi;
+
+        Text = "Stream Deck Icon Manager Setup";
+        Font = Theme.Body;
+        Icon = LoadIcon();
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
         MinimizeBox = false;
         StartPosition = FormStartPosition.CenterScreen;
-        ClientSize = new Size(480, 200);
-        BackColor = Color.FromArgb(45, 45, 45);
-        ForeColor = Color.White;
+        ClientSize = new Size(460, 250);
+        BackColor = Theme.Window;
+        ForeColor = Theme.Text;
 
-        _titleLabel = new Label
+        var logo = new PictureBox
         {
-            AutoSize = false,
-            Location = new Point(20, 18),
-            Size = new Size(440, 40),
-            Font = new Font("Segoe UI", 12F, FontStyle.Bold),
+            Location = new Point(24, 24),
+            Size = new Size(48, 48),
+            SizeMode = PictureBoxSizeMode.Zoom,
+            Image = Icon is null ? null : new Icon(Icon, 256, 256).ToBitmap()
+        };
+
+        var title = new Label
+        {
             Text = "Stream Deck Icon Manager",
-            ForeColor = Color.White
+            Font = Theme.DialogTitle,
+            ForeColor = Theme.Text,
+            AutoSize = true,
+            Location = new Point(84, 24)
+        };
+
+        var version = new Label
+        {
+            Text = $"Version {InstallerVersion}",
+            Font = Theme.Small,
+            ForeColor = Theme.TextFaint,
+            AutoSize = true,
+            Location = new Point(86, 54)
         };
 
         _statusLabel = new Label
         {
+            Text = "Getting ready...",
+            Font = Theme.Body,
+            ForeColor = Theme.TextMuted,
             AutoSize = false,
-            Location = new Point(20, 70),
-            Size = new Size(440, 40),
-            Text = "Click Install to download and install the latest application files.",
-            ForeColor = Color.Gainsboro
+            Location = new Point(24, 92),
+            Size = new Size(412, 56)
         };
 
-        _progressBar = new ProgressBar
+        _progressBar = new ProgressLine
         {
-            Location = new Point(20, 120),
-            Size = new Size(440, 22),
-            Minimum = 0,
-            Maximum = 100
+            Location = new Point(24, 156),
+            Size = new Size(412, 6)
         };
 
-        _installButton = new Button
-        {
-            Text = "Install",
-            Location = new Point(270, 155),
-            Size = new Size(90, 28),
-            UseVisualStyleBackColor = true
-        };
-        _installButton.Click += async (_, _) => await RunInstallAsync();
-
-        _closeButton = new Button
-        {
-            Text = "Close",
-            Location = new Point(370, 155),
-            Size = new Size(90, 28),
-            UseVisualStyleBackColor = true
-        };
+        _closeButton = new ThemedButton("Close", ButtonKind.Ghost) { Margin = new Padding(0, 0, 8, 0) };
         _closeButton.Click += (_, _) => Close();
 
-        Controls.Add(_titleLabel);
+        _installButton = new ThemedButton("Try again", ButtonKind.Primary) { Margin = Padding.Empty, Visible = false };
+        _installButton.Click += async (_, _) => await RunInstallAsync();
+
+        var buttons = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Right,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            WrapContents = false,
+            Padding = new Padding(0, 14, 0, 0),
+            BackColor = Theme.Sidebar
+        };
+        buttons.Controls.Add(_closeButton);
+        buttons.Controls.Add(_installButton);
+
+        var footer = new FooterPanel { Dock = DockStyle.Bottom, Height = 64, Padding = new Padding(20, 1, 20, 0) };
+        footer.Controls.Add(buttons);
+
+        Controls.Add(logo);
+        Controls.Add(title);
+        Controls.Add(version);
         Controls.Add(_statusLabel);
         Controls.Add(_progressBar);
-        Controls.Add(_installButton);
-        Controls.Add(_closeButton);
+        Controls.Add(footer);
+        AcceptButton = _installButton;
+
+        ResumeLayout(false);
+        PerformLayout();
 
         Shown += async (_, _) => await RunInstallAsync();
     }
 
     private static Version InstallerVersion { get; } = ReadVersion();
 
+    private static Icon? LoadIcon()
+    {
+        using var stream = typeof(SetupForm).Assembly.GetManifestResourceStream("AppIcon.ico");
+        return stream is null ? null : new Icon(stream);
+    }
+
+    protected override void OnHandleCreated(EventArgs e)
+    {
+        base.OnHandleCreated(e);
+        Native.UseDarkTitleBar(this);
+        Native.SetCaptionColors(this, Theme.Window, Theme.Text);
+    }
+
+    protected override void OnFormClosing(FormClosingEventArgs e)
+    {
+        // Closing mid-install could leave the swap half done; Close is disabled then anyway.
+        if (_busy && e.CloseReason == CloseReason.UserClosing)
+            e.Cancel = true;
+        base.OnFormClosing(e);
+    }
+
+    /// <summary>Working: no Install button, Close visibly disabled.</summary>
+    private void ShowWorking()
+    {
+        _busy = true;
+        _installButton.Visible = false;
+        _closeButton.Enabled = false;
+        _statusLabel.ForeColor = Theme.TextMuted;
+    }
+
+    /// <summary>Stopped after a failure or cancel: offer Try again.</summary>
+    private void ShowStopped(string message, bool isError)
+    {
+        _busy = false;
+        _statusLabel.Text = message;
+        _statusLabel.ForeColor = isError ? Theme.Danger : Theme.TextMuted;
+        _installButton.Visible = true;
+        _closeButton.Enabled = true;
+        _installButton.Focus();
+    }
+
     private async Task RunInstallAsync()
     {
         if (_busy)
             return;
 
-        _busy = true;
-        _installButton.Enabled = false;
-        _closeButton.Enabled = false;
+        ShowWorking();
+        _progressBar.Value = 0;
 
         try
         {
@@ -107,8 +231,28 @@ internal sealed class SetupForm : Form
                 _progressBar.Value = Math.Clamp(p.Percent, 0, 100);
             });
 
-            await Installer.InstallAsync(InstallerVersion, progress);
-            _statusLabel.Text = "Installation complete. Launching app...";
+            // Download and unpack first. This changes nothing on disk outside a temp folder,
+            // and gives an app that launched us time to exit.
+            var package = await Installer.PrepareAsync(InstallerVersion, progress);
+            try
+            {
+                if (!await EnsureAppClosedAsync())
+                {
+                    _progressBar.Value = 0;
+                    ShowStopped("Update cancelled. Your current version hasn't been changed.", isError: false);
+                    return;
+                }
+
+                _statusLabel.Text = "Installing...";
+                _progressBar.Value = 90;
+                await Task.Run(() => Installer.Apply(package));
+            }
+            finally
+            {
+                package.Dispose();
+            }
+
+            _statusLabel.Text = "Installed. Opening Stream Deck Icon Manager...";
             _progressBar.Value = 100;
 
             Process.Start(new ProcessStartInfo
@@ -118,15 +262,65 @@ internal sealed class SetupForm : Form
                 UseShellExecute = true
             });
 
+            _busy = false;
             Close();
         }
         catch (Exception ex)
         {
-            _statusLabel.Text = "Installation failed.";
-            MessageBox.Show(this, ex.Message, "Setup Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            _installButton.Enabled = true;
-            _closeButton.Enabled = true;
-            _busy = false;
+            ShowStopped(ex is HttpRequestException
+                ? "Couldn't download the update. Check your internet connection, then click Try again."
+                : ex.Message, isError: true);
+        }
+    }
+
+    /// <summary>
+    /// Waits for running copies of the app to exit. Version 1.1.0.1 starts Setup and only exits
+    /// after the user dismisses a message, so this can take a moment. Returns false if the
+    /// user cancels.
+    /// </summary>
+    private async Task<bool> EnsureAppClosedAsync()
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(15);
+        while (true)
+        {
+            var running = AppProcesses.Find(_waitPid);
+            if (running.Count == 0)
+                return true;
+
+            if (DateTime.UtcNow < deadline)
+            {
+                _statusLabel.Text = "Waiting for Stream Deck Icon Manager to close...";
+                AppProcesses.DisposeAll(running);
+                await Task.Delay(500);
+                continue;
+            }
+
+            var closeIt = new TaskDialogButton("Close it and continue");
+            var retry = new TaskDialogButton("Try again");
+            var choice = TaskDialog.ShowDialog(this, new TaskDialogPage
+            {
+                Caption = "Stream Deck Icon Manager Setup",
+                Heading = "Stream Deck Icon Manager is still open",
+                Text = "Close it to finish the update. If you let Setup close it, any changes you haven't saved in it will be lost.",
+                Icon = TaskDialogIcon.Warning,
+                Buttons = { closeIt, retry, TaskDialogButton.Cancel },
+                DefaultButton = retry
+            });
+
+            if (choice == TaskDialogButton.Cancel)
+            {
+                AppProcesses.DisposeAll(running);
+                return false;
+            }
+
+            if (choice == closeIt)
+            {
+                _statusLabel.Text = "Closing Stream Deck Icon Manager...";
+                await Task.Run(() => AppProcesses.Close(running));
+            }
+
+            AppProcesses.DisposeAll(running);
+            deadline = DateTime.UtcNow.AddSeconds(5);
         }
     }
 
@@ -146,43 +340,220 @@ internal sealed class SetupForm : Form
 
 internal readonly record struct InstallProgress(string Status, int Percent);
 
+/// <summary>Downloaded, unpacked app files waiting to be installed. Disposing deletes them.</summary>
+internal sealed class PreparedPackage : IDisposable
+{
+    private readonly string _workRoot;
+
+    public PreparedPackage(string workRoot) => _workRoot = workRoot;
+
+    public string SourceRoot { get; set; } = "";
+
+    public void Dispose()
+    {
+        try { Directory.Delete(_workRoot, true); } catch { /* temp cleanup is best-effort */ }
+    }
+}
+
+/// <summary>Finds and closes running copies of the installed app.</summary>
+internal static class AppProcesses
+{
+    public static List<Process> Find(int? waitPid)
+    {
+        var found = new List<Process>();
+        var installDir = Path.GetFullPath(ReleaseNaming.InstallDirectory).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        var appName = Path.GetFileNameWithoutExtension(ReleaseNaming.AppExeFileName);
+
+        foreach (var process in Process.GetProcessesByName(appName))
+        {
+            if (process.Id == waitPid || IsUnder(process, installDir))
+                found.Add(process);
+            else
+                process.Dispose();
+        }
+
+        if (waitPid is { } pid && found.All(p => p.Id != pid))
+        {
+            try
+            {
+                var waited = Process.GetProcessById(pid);
+                if (!waited.HasExited)
+                    found.Add(waited);
+                else
+                    waited.Dispose();
+            }
+            catch (ArgumentException)
+            {
+                // Already exited.
+            }
+        }
+
+        return found;
+    }
+
+    public static void Close(IEnumerable<Process> processes)
+    {
+        foreach (var process in processes)
+        {
+            try
+            {
+                if (process.HasExited)
+                    continue;
+
+                // A polite close first; it won't work while the app shows a modal message.
+                process.CloseMainWindow();
+                if (!process.WaitForExit(3000))
+                {
+                    process.Kill();
+                    process.WaitForExit(5000);
+                }
+            }
+            catch
+            {
+                // Exited in the meantime, or access denied; the next check will report it.
+            }
+        }
+    }
+
+    public static void DisposeAll(IEnumerable<Process> processes)
+    {
+        foreach (var process in processes)
+            process.Dispose();
+    }
+
+    private static bool IsUnder(Process process, string directory)
+    {
+        try
+        {
+            var path = process.MainModule?.FileName;
+            return path is not null && path.StartsWith(directory, StringComparison.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+}
+
 internal static class Installer
 {
     private static readonly HttpClient Http = CreateClient();
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
 
-    public static async Task InstallAsync(Version installerVersion, IProgress<InstallProgress> progress, CancellationToken cancellationToken = default)
+    /// <summary>
+    /// Downloads and unpacks the app into a temp folder. Touches nothing in the install folder.
+    /// </summary>
+    public static async Task<PreparedPackage> PrepareAsync(Version installerVersion, IProgress<InstallProgress> progress, CancellationToken cancellationToken = default)
     {
         progress.Report(new InstallProgress("Looking up release package...", 5));
 
         var package = await ResolveAppPackageAsync(installerVersion, cancellationToken).ConfigureAwait(false);
         var workRoot = Path.Combine(Path.GetTempPath(), "StreamDeckIconManager-Setup", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(workRoot);
-        var zipPath = Path.Combine(workRoot, package.FileName);
-        var extractPath = Path.Combine(workRoot, "app");
+        var prepared = new PreparedPackage(workRoot);
 
         try
         {
+            var zipPath = Path.Combine(workRoot, package.FileName);
+            var extractPath = Path.Combine(workRoot, "app");
+
             progress.Report(new InstallProgress("Downloading application files...", 10));
             await DownloadAsync(package.DownloadUrl, zipPath, progress, cancellationToken).ConfigureAwait(false);
 
             progress.Report(new InstallProgress("Extracting files...", 80));
-            if (Directory.Exists(extractPath))
-                Directory.Delete(extractPath, true);
             ZipFile.ExtractToDirectory(zipPath, extractPath);
 
-            var sourceRoot = FindAppRoot(extractPath)
+            prepared.SourceRoot = FindAppRoot(extractPath)
                 ?? throw new DirectoryNotFoundException("Downloaded package did not contain the application files.");
-
-            progress.Report(new InstallProgress("Installing...", 90));
-            CopyAppFiles(sourceRoot, ReleaseNaming.InstallDirectory);
-            CreateShortcuts();
-
-            progress.Report(new InstallProgress("Done.", 100));
+            return prepared;
         }
-        finally
+        catch
         {
-            try { Directory.Delete(workRoot, true); } catch { /* ignore */ }
+            prepared.Dispose();
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Replaces the installed app with the prepared files. The new files are staged next to the
+    /// install folder and swapped in with folder renames, so a failure leaves the old version
+    /// working instead of half deleted.
+    /// </summary>
+    public static void Apply(PreparedPackage package)
+    {
+        var installDir = Path.GetFullPath(ReleaseNaming.InstallDirectory).TrimEnd(Path.DirectorySeparatorChar);
+        var staging = installDir + ".new";
+        var backup = installDir + ".old";
+
+        DeleteDirectory(staging);
+        CopyDirectory(package.SourceRoot, staging);
+        if (!File.Exists(Path.Combine(staging, ReleaseNaming.AppExeFileName)))
+            throw new FileNotFoundException("The downloaded files are missing the application executable.");
+
+        if (Directory.Exists(backup) && !DeleteDirectory(backup))
+            backup += "-" + DateTime.Now.ToString("yyyyMMddHHmmss");
+
+        var hadOldVersion = Directory.Exists(installDir);
+        if (hadOldVersion && !TryMoveDirectory(installDir, backup))
+        {
+            DeleteDirectory(staging);
+            throw new IOException(
+                "Some of Stream Deck Icon Manager's files are still in use, so the update couldn't replace them. " +
+                "Your current version hasn't been changed. Close Stream Deck Icon Manager, then click Try again.");
+        }
+
+        if (!TryMoveDirectory(staging, installDir))
+        {
+            if (hadOldVersion)
+                TryMoveDirectory(backup, installDir);
+            DeleteDirectory(staging);
+            throw new IOException("Couldn't move the new files into place. Your current version hasn't been changed. Click Try again.");
+        }
+
+        DeleteDirectory(backup);
+        CreateShortcuts();
+    }
+
+    private static bool TryMoveDirectory(string from, string to)
+    {
+        // Antivirus scanners and the just-closed app can hold files for a moment, so retry briefly.
+        for (var attempt = 0; attempt < 6; attempt++)
+        {
+            try
+            {
+                Directory.Move(from, to);
+                return true;
+            }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+
+            Thread.Sleep(500);
+        }
+
+        return false;
+    }
+
+    private static bool DeleteDirectory(string path)
+    {
+        try
+        {
+            if (Directory.Exists(path))
+                Directory.Delete(path, true);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static void CopyDirectory(string sourceRoot, string destinationRoot)
+    {
+        foreach (var sourceFile in Directory.EnumerateFiles(sourceRoot, "*", SearchOption.AllDirectories))
+        {
+            var destFile = Path.Combine(destinationRoot, Path.GetRelativePath(sourceRoot, sourceFile));
+            Directory.CreateDirectory(Path.GetDirectoryName(destFile)!);
+            File.Copy(sourceFile, destFile, overwrite: true);
         }
     }
 
@@ -259,35 +630,16 @@ internal static class Installer
             .FirstOrDefault(d => !string.IsNullOrEmpty(d));
     }
 
-    private static void CopyAppFiles(string sourceRoot, string destinationRoot)
-    {
-        Directory.CreateDirectory(destinationRoot);
-
-        foreach (var file in Directory.EnumerateFiles(destinationRoot, "*", SearchOption.AllDirectories))
-        {
-            try { File.Delete(file); } catch { /* file may be locked; overwrite next */ }
-        }
-
-        foreach (var sourceFile in Directory.EnumerateFiles(sourceRoot, "*", SearchOption.AllDirectories))
-        {
-            var relative = Path.GetRelativePath(sourceRoot, sourceFile);
-            var destFile = Path.Combine(destinationRoot, relative);
-            Directory.CreateDirectory(Path.GetDirectoryName(destFile)!);
-            File.Copy(sourceFile, destFile, overwrite: true);
-        }
-
-        if (!File.Exists(Path.Combine(destinationRoot, ReleaseNaming.AppExeFileName)))
-            throw new FileNotFoundException("Installed files are missing the application executable.");
-    }
-
     private static void CreateShortcuts()
     {
+        var testRun = Environment.GetEnvironmentVariable("SDIM_INSTALL_DIR") is { Length: > 0 };
+        // A test install (SDIM_INSTALL_DIR) must not repoint the real shortcuts at the test folder.
+        var testShortcuts = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(ReleaseNaming.InstallDirectory))!, "test-shortcuts");
         var startMenu = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.StartMenu),
-            "Programs",
+            testRun ? testShortcuts : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.StartMenu), "Programs"),
             "Stream Deck Icon Manager.lnk");
         var desktop = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory),
+            testRun ? Path.Combine(testShortcuts, "Desktop") : Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory),
             "Stream Deck Icon Manager.lnk");
 
         CreateShortcut(startMenu);

@@ -66,7 +66,23 @@ internal sealed class AppUpdateService
         return await JsonSerializer.DeserializeAsync<T>(stream, JsonOptions, cancellationToken).ConfigureAwait(false);
     }
 
-    public async Task InstallUpdateAsync(
+    /// <summary>
+    /// Starts the downloaded installer and tells it which process to wait for.
+    /// The caller must exit straight after: Setup replaces this app's files.
+    /// </summary>
+    public static void LaunchInstaller(string setupPath)
+    {
+        Process.Start(new ProcessStartInfo
+        {
+            FileName = setupPath,
+            Arguments = $"--wait-pid {Environment.ProcessId}",
+            WorkingDirectory = Path.GetDirectoryName(setupPath)!,
+            UseShellExecute = true
+        });
+    }
+
+    /// <summary>Downloads the update's installer and returns its path. Does not start it.</summary>
+    public async Task<string> DownloadInstallerAsync(
         UpdateCheckResult update,
         IProgress<UpdateProgress>? progress = null,
         CancellationToken cancellationToken = default)
@@ -102,13 +118,8 @@ internal sealed class AppUpdateService
             throw new InvalidOperationException($"Unsupported update package type: {downloadName}");
         }
 
-        progress?.Report(new UpdateProgress("Launching installer...", 100));
-        Process.Start(new ProcessStartInfo
-        {
-            FileName = setupPath,
-            WorkingDirectory = Path.GetDirectoryName(setupPath)!,
-            UseShellExecute = true
-        });
+        progress?.Report(new UpdateProgress("Download complete.", 100));
+        return setupPath;
     }
 
     private static async Task DownloadFileAsync(

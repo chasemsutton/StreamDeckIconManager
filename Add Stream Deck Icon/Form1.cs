@@ -1140,31 +1140,48 @@ public class Form1 : Form
                 "Unsaved changes", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
             SaveAllPacks();
 
-        using var progressForm = new UpdateProgressForm();
-        var progress = new Progress<UpdateProgress>(progressForm.Report);
-        progressForm.Show(this);
+        string setupPath;
+        using (var progressForm = new UpdateProgressForm())
+        {
+            var progress = new Progress<UpdateProgress>(progressForm.Report);
+            progressForm.Show(this);
+            try
+            {
+                setupPath = await _updater.DownloadInstallerAsync(update, progress);
+            }
+            catch (Exception ex)
+            {
+                progressForm.Close();
+                MessageBox.Show(this, "Update failed:\n" + ex.Message, "Update failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                SetStatus("Update failed.", Theme.Danger);
+                return;
+            }
+
+            progressForm.Close();
+        }
+
+        // Tell the user first, then start Setup and exit at once. Setup replaces this app's
+        // files, so the app must not still be open (or showing a dialog) while it runs.
+        MessageBox.Show(
+            this,
+            "The update is downloaded. This app will close and the installer will finish the update.",
+            "Update ready",
+            MessageBoxButtons.OK,
+            MessageBoxIcon.Information);
 
         try
         {
-            await _updater.InstallUpdateAsync(update, progress);
-            MessageBox.Show(
-                this,
-                "The installer will start now. This app will close so the update can finish.",
-                "Update ready",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Information);
-            ChangesMade = false;
-            Environment.Exit(0);
+            AppUpdateService.LaunchInstaller(setupPath);
         }
         catch (Exception ex)
         {
-            MessageBox.Show(this, "Update failed:\n" + ex.Message, "Update failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            MessageBox.Show(this, "Couldn't start the installer:\n" + ex.Message, "Update failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
             SetStatus("Update failed.", Theme.Danger);
+            return;
         }
-        finally
-        {
-            progressForm.Close();
-        }
+
+        _changesMade = false;
+        Environment.Exit(0);
     }
 
     #endregion
