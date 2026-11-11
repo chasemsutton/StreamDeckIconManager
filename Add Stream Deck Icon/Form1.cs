@@ -1,4 +1,3 @@
-using System.IO.Compression;
 using Add_Stream_Deck_Icon.UI;
 
 namespace Add_Stream_Deck_Icon;
@@ -291,7 +290,7 @@ public class Form1 : Form
 
         var footer = new Panel { Dock = DockStyle.Bottom, Height = 104, Padding = new Padding(16, 12, 16, 16), BackColor = Theme.Sidebar };
         var newPack = new ThemedButton("New pack", ButtonKind.Secondary, Theme.Glyphs.Add) { AutoSize = false, Dock = DockStyle.Top, Height = 36 };
-        var import = new ThemedButton("Import pack from .zip", ButtonKind.Ghost, Theme.Glyphs.Import) { AutoSize = false, Dock = DockStyle.Top, Height = 36 };
+        var import = new ThemedButton("Import pack", ButtonKind.Ghost, Theme.Glyphs.Import) { AutoSize = false, Dock = DockStyle.Top, Height = 36 };
         newPack.Click += (_, _) => CreatePack();
         import.Click += (_, _) => ImportPack();
         footer.Controls.Add(import);
@@ -347,6 +346,7 @@ public class Form1 : Form
         var edit = new ThemedButton("Edit details", ButtonKind.Secondary, Theme.Glyphs.Edit);
         var emblem = new ThemedButton("Change emblem", ButtonKind.Secondary, Theme.Glyphs.Picture);
         var export = new ThemedButton("Export", ButtonKind.Secondary, Theme.Glyphs.Export);
+        new ToolTip().SetToolTip(export, "Save as a .streamDeckIconPack file. Anyone with Stream Deck can double-click it to install the pack, with or without this app.");
         var delete = new ThemedButton("Delete pack", ButtonKind.Danger, Theme.Glyphs.Delete);
         edit.Click += (_, _) => EditPackDetails();
         emblem.Click += (_, _) => ChangeEmblem();
@@ -457,7 +457,7 @@ public class Form1 : Form
 
         var buttons = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Anchor = AnchorStyles.None, BackColor = Theme.Window };
         var create = new ThemedButton("New pack", ButtonKind.Primary, Theme.Glyphs.Add);
-        var import = new ThemedButton("Import from .zip", ButtonKind.Secondary, Theme.Glyphs.Import) { Margin = Padding.Empty };
+        var import = new ThemedButton("Import a pack", ButtonKind.Secondary, Theme.Glyphs.Import) { Margin = Padding.Empty };
         create.Click += (_, _) => CreatePack();
         import.Click += (_, _) => ImportPack();
         buttons.Controls.Add(create);
@@ -813,16 +813,11 @@ public class Form1 : Form
         if (pack is null)
             return;
 
-        if (ChangesMade && MessageBox.Show(this,
-                "Export uses the pack as it was last saved. Save your changes first?",
-                "Unsaved changes", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
-            SaveAllPacks();
-
         using var dialog = new SaveFileDialog
         {
             Title = "Export " + pack.Name,
-            Filter = "Zip archive (*.zip)|*.zip",
-            FileName = pack.Name + ".zip",
+            Filter = IconPackFile.SaveFilter,
+            FileName = pack.Name + IconPackFile.Extension,
             RestoreDirectory = true
         };
 
@@ -831,10 +826,9 @@ public class Form1 : Form
 
         try
         {
-            if (File.Exists(dialog.FileName))
-                File.Delete(dialog.FileName);
-            ZipFile.CreateFromDirectory(pack.IconPackPath, dialog.FileName, CompressionLevel.Optimal, includeBaseDirectory: true);
-            SetStatus($"Exported {pack.Name} to {dialog.FileName}", Theme.Success);
+            // Exports what's on screen, unsaved changes included.
+            IconPackFile.Export(pack, dialog.FileName);
+            SetStatus($"Exported {pack.Name}. Anyone with Stream Deck can double-click the file to install it.", Theme.Success);
         }
         catch (Exception ex)
         {
@@ -842,20 +836,20 @@ public class Form1 : Form
         }
     }
 
-    private void ImportPack(string? zipPath = null)
+    private void ImportPack(string? packFile = null)
     {
-        if (zipPath is null)
+        if (packFile is null)
         {
             using var dialog = new OpenFileDialog
             {
                 Title = "Import an icon pack",
-                Filter = "Zip archive (*.zip)|*.zip",
+                Filter = IconPackFile.OpenFilter,
                 RestoreDirectory = true
             };
 
             if (dialog.ShowDialog(this) != DialogResult.OK)
                 return;
-            zipPath = dialog.FileName;
+            packFile = dialog.FileName;
         }
 
         var extractRoot = Path.Combine(Path.GetTempPath(), "sdim-import-" + Guid.NewGuid().ToString("N"));
@@ -863,18 +857,22 @@ public class Form1 : Form
 
         try
         {
-            ZipFile.ExtractToDirectory(zipPath, extractRoot, overwriteFiles: true);
-            var packDir = Directory.GetDirectories(extractRoot, "*", SearchOption.AllDirectories)
-                .FirstOrDefault(d => d.Contains(".sdIconPack", StringComparison.OrdinalIgnoreCase));
-
+            var packDir = IconPackFile.Extract(packFile, extractRoot);
             if (packDir is null)
             {
-                MessageBox.Show(this, "That zip doesn't contain a Stream Deck icon pack (a folder ending in .sdIconPack).",
+                MessageBox.Show(this, "That file doesn't contain a Stream Deck icon pack. Choose a .streamDeckIconPack file, or a .zip exported from this app.",
                     "Nothing to import", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
 
-            import = new Manifest(packDir);
+            import = Manifest.ReadForImport(packDir, out var skipped);
+            if (import.Icons.Count == 0 && skipped > 0)
+            {
+                MessageBox.Show(this,
+                    $"None of the {skipped} icons in this pack can be imported. This app supports PNG, JPG and GIF icons; this pack uses another format, such as SVG.",
+                    "Nothing to import", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
 
             if (PackNameProblem(import.Name) is not null)
             {
@@ -894,7 +892,8 @@ public class Form1 : Form
             _allPacks.Add(loaded);
             RefreshPackList(loaded);
             ChangesMade = true;
-            SetStatus($"Imported {loaded.Name} with {loaded.Icons.Count} icons. Restart Stream Deck to see it.", Theme.Success);
+            var skippedNote = skipped == 0 ? "" : $" Skipped {skipped} icon{(skipped == 1 ? "" : "s")} in a format this app can't read (such as SVG).";
+            SetStatus($"Imported {loaded.Name} with {loaded.Icons.Count} icons.{skippedNote} Save to Stream Deck to see it.", skipped == 0 ? Theme.Success : Theme.Warning);
         }
         catch (Exception ex)
         {
@@ -1033,7 +1032,7 @@ public class Form1 : Form
     {
         var files = DroppedFiles(e);
         var images = SelectedPack is not null && files.Any(PackPaths.IsSupportedImageExtension);
-        var zip = files.Length == 1 && files[0].EndsWith(".zip", StringComparison.OrdinalIgnoreCase);
+        var zip = files.Length == 1 && IconPackFile.IsImportable(files[0]);
         e.Effect = images || zip ? DragDropEffects.Copy : DragDropEffects.None;
         _dropZone.DragActive = images;
     }
@@ -1043,7 +1042,7 @@ public class Form1 : Form
         _dropZone.DragActive = false;
         var files = DroppedFiles(e);
 
-        if (files.Length == 1 && files[0].EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+        if (files.Length == 1 && IconPackFile.IsImportable(files[0]))
         {
             BeginInvoke(() => ImportPack(files[0]));
             return;

@@ -88,24 +88,101 @@ internal sealed class Manifest
         Icons.RemoveAt(index);
     }
 
-    public void SaveManifest()
+    public void SaveManifest() => WriteTo(IconPackPath);
+
+    /// <summary>
+    /// Writes the pack's Stream Deck files (manifest.json, icons.json, icon.png, icons/) into a
+    /// folder, replacing what's there. Leaves anything else, such as the app's backup folder, alone.
+    /// </summary>
+    public void WriteTo(string folder)
     {
-        var iconsDir = Path.Combine(IconPackPath, "icons");
+        var iconsDir = Path.Combine(folder, "icons");
         Directory.CreateDirectory(iconsDir);
 
         foreach (var file in new DirectoryInfo(iconsDir).EnumerateFiles())
             file.Delete();
 
-        File.Delete(Path.Combine(IconPackPath, "icons.json"));
-        File.Delete(Path.Combine(IconPackPath, "manifest.json"));
-        File.Delete(Path.Combine(IconPackPath, "icon.png"));
+        File.Delete(Path.Combine(folder, "icons.json"));
+        File.Delete(Path.Combine(folder, "manifest.json"));
+        File.Delete(Path.Combine(folder, "icon.png"));
 
-        if (Icons.Count > 0)
-            SaveImagesToIconsFolder();
+        foreach (var icon in Icons)
+            icon.Picture.Save(Path.Combine(iconsDir, icon.Path), icon.Picture.RawFormat);
 
-        Emblem.Save(Path.Combine(IconPackPath, "icon.png"), ImageFormat.Png);
-        File.WriteAllText(Path.Combine(IconPackPath, "icons.json"), CompileIconsJson());
-        File.WriteAllText(Path.Combine(IconPackPath, "manifest.json"), CompileManifestJson());
+        Emblem.Save(Path.Combine(folder, "icon.png"), ImageFormat.Png);
+        File.WriteAllText(Path.Combine(folder, "icons.json"), CompileIconsJson());
+        File.WriteAllText(Path.Combine(folder, "manifest.json"), CompileManifestJson());
+    }
+
+    private Manifest()
+    {
+        Emblem = ImageHelper.CloneBitmap(Resources.imgIcon1);
+    }
+
+    /// <summary>
+    /// Reads any icon pack folder for importing: one made by this app (including old exports) or
+    /// by another tool. Icons come straight from icons/. Images that can't be loaded here (SVG,
+    /// WEBP) are skipped and counted in <paramref name="skippedIcons"/>.
+    /// </summary>
+    public static Manifest ReadForImport(string packDir, out int skippedIcons)
+    {
+        skippedIcons = 0;
+        var pack = new Manifest { IconPackPath = packDir };
+
+        ManifestDto? dto = null;
+        var manifestPath = Path.Combine(packDir, "manifest.json");
+        if (File.Exists(manifestPath))
+            dto = JsonSerializer.Deserialize<ManifestDto>(File.ReadAllText(manifestPath), JsonOptions);
+
+        var folderName = Path.GetFileName(packDir.TrimEnd(Path.DirectorySeparatorChar));
+        pack.Name = string.IsNullOrWhiteSpace(dto?.Name) ? folderName.Split('.').Reverse().Skip(2).FirstOrDefault() ?? "Imported pack" : dto!.Name!;
+        pack.Author = string.IsNullOrWhiteSpace(dto?.Author) ? PackPaths.DefaultAuthor : dto!.Author!;
+        pack.Description = string.IsNullOrWhiteSpace(dto?.Description) ? PackPaths.DefaultDescription : dto!.Description!;
+
+        var iconsJson = Path.Combine(packDir, "icons.json");
+        var entries = File.Exists(iconsJson)
+            ? JsonSerializer.Deserialize<List<IconDto>>(File.ReadAllText(iconsJson), JsonOptions) ?? new List<IconDto>()
+            : new List<IconDto>();
+
+        foreach (var entry in entries)
+        {
+            if (string.IsNullOrWhiteSpace(entry.Path))
+                continue;
+
+            var imagePath = Path.Combine(packDir, "icons", entry.Path);
+            Bitmap picture;
+            try
+            {
+                picture = ImageHelper.LoadBitmap(imagePath);
+            }
+            catch
+            {
+                skippedIcons++;
+                continue;
+            }
+
+            var number = PackIcon.ParseNumberFromPath(entry.Path);
+            var name = string.IsNullOrWhiteSpace(entry.Name) ? Path.GetFileNameWithoutExtension(entry.Path) : entry.Name;
+            pack.Icons.Add(new PackIcon(number, Path.GetFileName(entry.Path), name, entry.Tags ?? Array.Empty<string>(), picture));
+            pack.HighestIconNumber = Math.Max(pack.HighestIconNumber, number);
+        }
+
+        var emblemPath = Path.Combine(packDir, string.IsNullOrWhiteSpace(dto?.Icon) ? "icon.png" : dto!.Icon!);
+        try
+        {
+            if (File.Exists(emblemPath))
+            {
+                using var loaded = Image.FromFile(emblemPath);
+                pack.Emblem.Dispose();
+                pack.Emblem = ImageHelper.CloneBitmap(loaded);
+            }
+        }
+        catch
+        {
+            // SVG or unreadable emblem: keep the default.
+        }
+
+        return pack;
     }
 
     public void DisposeAllImages()
@@ -203,13 +280,6 @@ internal sealed class Manifest
         }
     }
 
-    private void SaveImagesToIconsFolder()
-    {
-        var iconsDir = Path.Combine(IconPackPath, "icons");
-        foreach (var icon in Icons)
-            icon.Picture.Save(Path.Combine(iconsDir, icon.Path), icon.Picture.RawFormat);
-    }
-
     private string CompileIconsJson()
     {
         var dtos = Icons.Select(i => i.ToDto()).ToList();
@@ -224,7 +294,9 @@ internal sealed class Manifest
             Description = Description,
             Name = Name,
             URL = "",
-            Version = "1.0",
+            // A new version on every save, so installing an exported pack over an older copy of
+            // the same pack is always treated as an update.
+            Version = $"1.{DateTime.UtcNow:yyMMdd}.{(int)DateTime.UtcNow.TimeOfDay.TotalSeconds}",
             Icon = "icon.png",
             // Stream Deck shows a pack's Tags, not its Description, when you hover the pack in the
             // icon library, so the description goes here too. Commas would split it into separate tags.
