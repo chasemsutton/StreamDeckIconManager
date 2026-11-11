@@ -1,9 +1,9 @@
 <Project>
   <PropertyGroup>
-    <Version>1.2.0.5</Version>
-    <AssemblyVersion>1.2.0.5</AssemblyVersion>
-    <FileVersion>1.2.0.5</FileVersion>
-    <InformationalVersion>1.2.0.5</InformationalVersion>
+    <Version>1.2.0.6</Version>
+    <AssemblyVersion>1.2.0.6</AssemblyVersion>
+    <FileVersion>1.2.0.6</FileVersion>
+    <InformationalVersion>1.2.0.6</InformationalVersion>
     <Product>Stream Deck Icon Manager</Product>
     <Authors>Sutton Tools</Authors>
     <Company>Sutton Tools</Company>
