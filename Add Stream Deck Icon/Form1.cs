@@ -1279,14 +1279,16 @@ public partial class Form1 : Form
             progressForm.Close();
         }
 
-        // Tell the user first, then start Setup and exit at once. Setup replaces this app's
-        // files, so the app must not still be open (or showing a dialog) while it runs.
-        MessageBox.Show(
-            this,
-            "The update is downloaded. This app will close and the installer will finish the update.",
-            "Update ready",
-            MessageBoxButtons.OK,
-            MessageBoxIcon.Information);
+        // Ask first, then start Setup and exit at once. Setup replaces this app's files, so the
+        // app must not still be open (or showing a dialog) while it runs.
+        using (var ready = new UpdateReadyDialog(update.LatestVersion ?? AppUpdateService.CurrentVersion, update.IsPrerelease, ChangesMade))
+        {
+            if (ready.ShowDialog(this) != DialogResult.OK)
+            {
+                SetStatus($"Update cancelled. You're still on version {AppUpdateService.CurrentVersion}; check for updates whenever you're ready.");
+                return;
+            }
+        }
 
         try
         {
