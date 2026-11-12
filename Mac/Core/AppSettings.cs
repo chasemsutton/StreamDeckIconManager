@@ -58,10 +58,11 @@ internal sealed class AppSettings
             "StreamDeckIconManager-MacBuild", "settings.json");
 
     /// <summary>
-    /// The Mac app is a beta, so it starts on the beta channel: only releases that include a Mac
-    /// download are offered either way.
+    /// Someone who installs a beta build starts on the Beta channel; a full release starts on
+    /// Stable, like the Windows app. Saved on first run, so updating to a full release doesn't
+    /// quietly move a beta tester off betas. Only releases with a Mac download are offered.
     /// </summary>
-    public UpdateChannel UpdateChannel { get; set; } = UpdateChannel.Beta;
+    public UpdateChannel UpdateChannel { get; set; } = AppUpdateService.IsBetaBuild ? UpdateChannel.Beta : UpdateChannel.Stable;
 
     public bool ConvertGifsToWebp { get; set; } = true;
     public bool KeepFullSizeImages { get; set; }
@@ -79,9 +80,13 @@ internal sealed class AppSettings
         catch
         {
             // A damaged settings file falls back to defaults.
+            return new AppSettings();
         }
 
-        return new AppSettings();
+        // First run: remember the starting channel.
+        var fresh = new AppSettings();
+        fresh.Save();
+        return fresh;
     }
 
     public void Save()

@@ -13,9 +13,10 @@
 .NOTES
   RELEASES DON'T USE THIS SCRIPT. They're built on a Mac by GitHub Actions
   (.github/workflows/mac-release.yml), which also makes the .pkg installer and signs the app.
-  To release, push a tag:   git tag mac-1.2.1.1; git push origin mac-1.2.1.1
-  Mac releases use "mac-" tags and stay pre-releases that are never marked Latest, so Windows
-  users are never offered them (and Windows releases never reach Mac users).
+  See docs/RELEASING.md. In short, push a tag:
+    git tag mac-1.2.1.2-beta; git push origin mac-1.2.1.2-beta   (Mac beta)
+    git tag mac-1.2.1.2;      git push origin mac-1.2.1.2        (full Mac release)
+  These local builds are always beta builds.
 
   Needs the .NET 8 SDK (or newer). Uses "dotnet" from PATH if it has one, otherwise the per-user
   install in %LOCALAPPDATA%\Microsoft\dotnet (https://dot.net/v1/dotnet-install.ps1 -Channel 8.0).
@@ -184,7 +185,7 @@ foreach ($rid in $Runtimes) {
     # OneDrive can briefly lock files in obj\ while it syncs them, so try a few times.
     for ($attempt = 1; $attempt -le 3; $attempt++) {
         & $dotnet publish $project -c Release -r $rid --self-contained true `
-            -p:UseAppHost=true `
+            -p:UseAppHost=true -p:SdimBeta=true `
             -p:Version=$Version -p:AssemblyVersion=$Version -p:FileVersion=$Version -p:InformationalVersion=$Version `
             -o $publishDir
         if ($LASTEXITCODE -eq 0) { break }
@@ -221,4 +222,4 @@ Write-Host ""
 Write-Host "Mac test build ready in $outDir" -ForegroundColor Green
 Write-Host "Apple silicon: StreamDeckIconManager${Version}Mac-arm64.zip   Intel: StreamDeckIconManager${Version}Mac-x64.zip"
 Write-Host "Testers follow READ ME FIRST.txt inside the zip (one Terminal line to allow the unsigned app)."
-Write-Host "This is a local test build. To release, push a tag: git tag mac-$Version; git push origin mac-$Version" -ForegroundColor Yellow
+Write-Host "This is a local test build. To release, see docs/RELEASING.md (push a mac-$Version-beta or mac-$Version tag)." -ForegroundColor Yellow

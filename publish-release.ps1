@@ -14,8 +14,9 @@
   Beta builds are ordinary GitHub releases with "Set as a pre-release" ticked.
   Only users who picked the Beta update channel in the app are offered them.
   Keep the tag a plain version number (e.g. 1.2.0.0) so the updater can compare it.
-  Mac builds are released separately (publish-mac.ps1, tags like mac-1.2.1.0); the Windows
-  updater only offers releases that include a Windows Setup.exe.
+  Mac builds are released separately (tags like mac-1.2.1.0, built by GitHub Actions); the
+  Windows updater only offers releases that include a Windows Setup.exe. A Windows full release
+  must be the repository's "Latest" release. See docs/RELEASING.md.
 #>
 param(
     [string]$Version = "",

@@ -10,8 +10,9 @@ internal static class ReleaseNaming
     public const string AppExeFileName = "Add Stream Deck Icon.exe";
 
     /// <summary>
-    /// Mac-only releases are tagged "mac-1.2.1.0". Windows versions up to 1.2.1.0 can't parse such
-    /// tags, so they never offer a Mac release as an update; Windows releases keep plain tags.
+    /// Mac-only releases are tagged "mac-1.2.1.0" (or "mac-1.2.1.0-beta"). Windows versions up to
+    /// 1.2.1.0 can't parse such tags, so they never offer a Mac release as an update; Windows
+    /// releases keep plain tags. See docs/RELEASING.md.
     /// </summary>
     public const string MacTagPrefix = "mac-";
 

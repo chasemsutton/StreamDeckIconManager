@@ -24,6 +24,11 @@ internal sealed class AppUpdateService
     private const string BundleId = "com.suttontools.streamdeckiconmanager";
     private const string BundleName = "Stream Deck Icon Manager.app";
 
+    /// <summary>True for builds released as betas (tag mac-&lt;version&gt;-beta). See docs/RELEASING.md.</summary>
+    public static bool IsBetaBuild { get; } = Assembly.GetExecutingAssembly()
+        .GetCustomAttributes<AssemblyMetadataAttribute>()
+        .Any(a => a.Key == "SdimBeta" && a.Value == "true");
+
     /// <summary>"arm64" on Apple silicon, "x64" on Intel Macs.</summary>
     public static string MacArchitecture => RuntimeInformation.ProcessArchitecture == Architecture.Arm64 ? "arm64" : "x64";
 

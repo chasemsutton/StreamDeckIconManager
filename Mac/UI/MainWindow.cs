@@ -254,7 +254,7 @@ internal sealed partial class MainWindow : Window
         _statusLabel = Palette.Label("", Palette.Small, Palette.TextMuted);
         _statusLabel.VerticalAlignment = VerticalAlignment.Center;
 
-        var version = Palette.Label($"Version {AppUpdateService.CurrentVersion} (Mac beta)", Palette.Small, Palette.TextFaint);
+        var version = Palette.Label($"Version {AppUpdateService.CurrentVersion}{(AppUpdateService.IsBetaBuild ? " beta" : "")}", Palette.Small, Palette.TextFaint);
         version.VerticalAlignment = VerticalAlignment.Center;
         version.Margin = new Thickness(0, 0, 6, 0);
 
@@ -307,8 +307,9 @@ internal sealed partial class MainWindow : Window
         menu.Items.Add(beta);
         menu.Opening += (_, _) =>
         {
-            stable.Header = (_settings.UpdateChannel == UpdateChannel.Stable ? "✓  " : "     ") + "Stable";
-            beta.Header = (_settings.UpdateChannel == UpdateChannel.Beta ? "✓  " : "     ") + "Beta (recommended for the Mac beta)";
+            stable.Header = (_settings.UpdateChannel == UpdateChannel.Stable ? "✓  " : "     ") + "Stable (recommended)";
+            beta.Header = (_settings.UpdateChannel == UpdateChannel.Beta ? "✓  " : "     ") + "Beta (not recommended)";
+            beta.Classes.Set("danger", true);
         };
         return menu;
     }
@@ -325,13 +326,19 @@ internal sealed partial class MainWindow : Window
         if (channel == _settings.UpdateChannel)
             return;
 
+        if (channel == UpdateChannel.Beta && await ShowMessageAsync("Switch to beta updates",
+                "Beta releases get new features first, but they're less tested and may have bugs that affect your icon packs." + "\n\n" +
+                "Export any packs you care about before installing a beta. You can switch back to Stable at any time.",
+                MessageKind.Warning, "Cancel", "Switch to beta") != "Switch to beta")
+            return;
+
         _settings.UpdateChannel = channel;
         _settings.Save();
         UpdateChannelButton();
 
         if (channel == UpdateChannel.Stable)
         {
-            SetStatus("Switched to stable updates. Mac versions are betas for now, so you'll hear about the first stable Mac release.");
+            SetStatus("Switched to stable updates. If you're on a beta, you'll get the next stable release that's newer than it.");
             await CheckForUpdatesAsync(silentWhenCurrent: true);
         }
         else
@@ -726,7 +733,7 @@ internal sealed partial class MainWindow : Window
     public async Task ShowAboutAsync()
     {
         await ShowMessageAsync("Stream Deck Icon Manager",
-            $"Version {AppUpdateService.CurrentVersion} (Mac beta, {AppUpdateService.MacArchitecture})\n\n" +
+            $"Version {AppUpdateService.CurrentVersion} ({(AppUpdateService.IsBetaBuild ? "Mac beta" : "Mac")}, {AppUpdateService.MacArchitecture})\n\n" +
             $"Icon packs: {_streamDeckPacksPath}\nError log: {CrashLog.FilePath}\n\nBy Sutton Tools.");
     }
 

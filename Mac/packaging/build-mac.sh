@@ -1,7 +1,10 @@
 #!/bin/bash
 # Builds the Mac release on a Mac (GitHub Actions runs this; see .github/workflows/mac-release.yml).
 #
-#   Mac/packaging/build-mac.sh 1.2.1.0
+#   Mac/packaging/build-mac.sh 1.2.1.0          a full release build
+#   Mac/packaging/build-mac.sh 1.2.1.0 beta     a beta build (labelled beta, new users start on Beta)
+#
+# See docs/RELEASING.md for how Mac and Windows releases are kept apart.
 #
 # Output in artifacts/mac/:
 #   StreamDeckIconManager<version>MacSetup.pkg     the installer for new users (Apple silicon and Intel)
@@ -13,10 +16,13 @@
 set -euo pipefail
 
 VERSION="${1:-}"
-if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-  echo "Usage: $0 <version>, e.g. 1.2.1.0" >&2
+KIND="${2:-release}"
+if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] || [[ "$KIND" != "release" && "$KIND" != "beta" ]]; then
+  echo "Usage: $0 <version> [beta], e.g. 1.2.1.0" >&2
   exit 1
 fi
+BETA=false
+[ "$KIND" = "beta" ] && BETA=true
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 PACKAGING="$ROOT/Mac/packaging"
@@ -33,7 +39,7 @@ for RID in osx-arm64 osx-x64; do
   ARCH="${RID#osx-}"
   echo "-> Publishing $RID"
   dotnet publish "$ROOT/Mac/StreamDeckIconManager.Mac.csproj" -c Release -r "$RID" --self-contained true \
-    -p:UseAppHost=true \
+    -p:UseAppHost=true -p:SdimBeta="$BETA" \
     -p:Version="$VERSION" -p:AssemblyVersion="$VERSION" -p:FileVersion="$VERSION" -p:InformationalVersion="$VERSION" \
     -o "$WORK/$RID/publish"
 

@@ -26,6 +26,11 @@
     <PackageReference Include="Svg.Skia" Version="3.0.6" />
   </ItemGroup>
 
+  <!-- Beta builds (-p:SdimBeta=true; see docs/RELEASING.md) label themselves as betas and start new users on the Beta channel. -->
+  <ItemGroup Condition="'$(SdimBeta)' == 'true'">
+    <AssemblyMetadata Include="SdimBeta" Value="true" />
+  </ItemGroup>
+
   <ItemGroup>
     <Compile Include="..\shared\ReleaseNaming.cs" Link="Core\ReleaseNaming.cs" />
     <EmbeddedResource Include="..\Add Stream Deck Icon\Resources\imgIcon1.png" LogicalName="DefaultEmblem.png" />
