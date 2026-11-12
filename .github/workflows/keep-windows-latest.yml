@@ -1,0 +1,50 @@
+# Safety net: the repository's "Latest" release must always be a Windows release.
+#
+# Windows Setup and the Windows app's Stable channel (1.2.1.0 and earlier) read GitHub's Latest
+# release. If a Mac release ("mac-" tag) ends up as Latest, for example someone publishes or edits
+# one in the GitHub web page and leaves "Set as the latest release" ticked, this hands Latest back
+# to the newest full Windows release. See docs/RELEASING.md.
+#
+# Note: GitHub only runs release-triggered workflows from the default branch, and not for releases
+# created by other workflows (mac-release.yml always passes --latest=false itself).
+name: Keep a Windows release as Latest
+
+on:
+  release:
+    types: [published, released, edited, prereleased]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check the Latest release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          latest=$(gh api "repos/$REPO/releases/latest" -q .tag_name 2>/dev/null || true)
+          case "$latest" in
+            mac-*) ;;
+            *) echo "Latest is '$latest'; nothing to do."; exit 0 ;;
+          esac
+
+          # Newest full release with a Windows Setup.exe and a plain version tag.
+          target=$(gh api "repos/$REPO/releases?per_page=100" -q '
+            [ .[]
+              | select(.draft | not)
+              | select(.prerelease | not)
+              | select(.tag_name | startswith("mac-") | not)
+              | select(any(.assets[]; .name | test("^StreamDeckIconManager.*Setup\\.exe$"; "i")))
+            ] | first | .tag_name // empty')
+
+          if [ -z "$target" ]; then
+            echo "::error::Latest is the Mac release '$latest' and there's no full Windows release to put back."
+            exit 1
+          fi
+
+          gh release edit "$target" --repo "$REPO" --latest
+          echo "::warning::'$latest' had become the Latest release. Made Windows release '$target' Latest again. Mac releases must be published with --latest=false (see docs/RELEASING.md)."

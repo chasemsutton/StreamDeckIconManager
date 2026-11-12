@@ -64,3 +64,8 @@
 #*.PDF   diff=astextplain
 #*.rtf   diff=astextplain
 #*.RTF   diff=astextplain
+
+# Mac build: shell scripts must keep Unix line endings; the bundled Mac tools are binaries.
+*.sh text eol=lf
+Mac/packaging/pkg-scripts/* text eol=lf
+Mac/tools/gif2webp/osx-*/* binary

@@ -1,0 +1,84 @@
+# Builds and publishes a Mac release when a "mac-" tag is pushed:
+#   git tag mac-1.2.1.2-beta && git push origin mac-1.2.1.2-beta    -> Mac beta (pre-release)
+#   git tag mac-1.2.1.2      && git push origin mac-1.2.1.2         -> full Mac release
+#
+# Mac releases are never marked "Latest": the Windows app's Stable channel (1.2.1.0 and earlier)
+# and Windows Setup read the Latest release, which must stay a Windows release.
+# See docs/RELEASING.md for the whole scheme.
+name: Mac release
+
+on:
+  push:
+    tags:
+      - "mac-*"
+
+permissions:
+  contents: write
+
+jobs:
+  mac:
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Read version from tag
+        id: version
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          if [[ "$TAG" =~ ^mac-([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)(-beta)?$ ]]; then
+            echo "version=${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
+            if [ -n "${BASH_REMATCH[2]}" ]; then echo "kind=beta" >> "$GITHUB_OUTPUT"; else echo "kind=release" >> "$GITHUB_OUTPUT"; fi
+          else
+            echo "Tag must look like mac-1.2.1.2 or mac-1.2.1.2-beta (got $TAG)" >&2
+            exit 1
+          fi
+
+      - name: Build app, zips and installer
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          KIND: ${{ steps.version.outputs.kind }}
+        run: bash Mac/packaging/build-mac.sh "$VERSION" "$KIND"
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ steps.version.outputs.version }}
+          KIND: ${{ steps.version.outputs.kind }}
+        run: |
+          if [ "$KIND" = "beta" ]; then
+            TITLE="Mac beta $VERSION"; PRE="--prerelease"
+            INTRO="Mac beta of Stream Deck Icon Manager $VERSION. It may have bugs; export any packs you care about first."
+          else
+            TITLE="Mac $VERSION"; PRE=""
+            INTRO="Stream Deck Icon Manager $VERSION for Mac."
+          fi
+
+          cat > notes.md <<EOF
+          $INTRO
+
+          **Windows users:** this release is for Mac only, and your app won't offer it. Windows downloads are on the release marked "Latest".
+
+          ### Install
+          1. Download **StreamDeckIconManager${VERSION}MacSetup.pkg** below and open it. It works on Apple silicon and Intel Macs.
+          2. macOS says it can't verify the developer (the app isn't notarized by Apple yet). Click **Done**, then open **System Settings > Privacy & Security**, scroll down and click **Open Anyway** next to the installer's name. (On macOS 14 and earlier you can instead Control-click the file and choose **Open**.)
+          3. Follow the installer. The app goes in your Applications folder.
+
+          Already installed? Use **Check for updates** in the app instead; it updates itself.
+
+          The \`Mac-arm64.zip\` / \`Mac-x64.zip\` files are what the in-app updater downloads; you don't need them.
+
+          Needs macOS 12 or later and the Elgato Stream Deck app.
+          EOF
+
+          # --latest=false always: "Latest" belongs to Windows (see docs/RELEASING.md).
+          gh release create "$TAG" artifacts/mac/*.pkg artifacts/mac/*.zip \
+            $PRE --latest=false \
+            --title "$TITLE" \
+            --notes-file notes.md

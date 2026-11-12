@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Installer layout for StreamDeckIconManager<version>MacSetup.pkg (see build-mac.sh). -->
+<installer-gui-script minSpecVersion="2">
+  <title>Stream Deck Icon Manager</title>
+  <welcome file="welcome.html" mime-type="text/html" />
+  <!-- Runs natively on Apple silicon and Intel; without arm64 here, macOS would ask for Rosetta. -->
+  <options customize="never" require-scripts="false" hostArchitectures="arm64,x86_64" rootVolumeOnly="true" />
+  <domains enable_anywhere="false" enable_currentUserHome="false" enable_localSystem="true" />
+  <volume-check>
+    <allowed-os-versions>
+      <os-version min="12.0" />
+    </allowed-os-versions>
+  </volume-check>
+  <choices-outline>
+    <line choice="default">
+      <line choice="com.suttontools.streamdeckiconmanager.pkg" />
+    </line>
+  </choices-outline>
+  <choice id="default" />
+  <choice id="com.suttontools.streamdeckiconmanager.pkg" visible="false">
+    <pkg-ref id="com.suttontools.streamdeckiconmanager.pkg" />
+  </choice>
+  <pkg-ref id="com.suttontools.streamdeckiconmanager.pkg" version="{VERSION}" onConclusion="none">app.pkg</pkg-ref>
+</installer-gui-script>
