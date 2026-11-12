@@ -1,0 +1,72 @@
+# Builds and publishes a Mac release when a "mac-<version>" tag is pushed, e.g.:
+#   git tag mac-1.2.1.1 && git push origin mac-1.2.1.1
+#
+# Mac releases are separate from Windows ones, so a beta for one platform never shows up as an
+# update on the other:
+#   - Tag "mac-<version>": Windows 1.2.1.0 and earlier can't read it, and newer Windows versions
+#     only look at releases that contain a Windows Setup.exe.
+#   - Published as a pre-release and never marked "Latest": the Windows app's Stable channel
+#     (up to 1.2.1.0) and Windows Setup use the Latest release.
+#   - The Mac app only offers releases with a Mac zip for its processor.
+name: Mac release
+
+on:
+  push:
+    tags:
+      - "mac-*"
+
+permissions:
+  contents: write
+
+jobs:
+  mac:
+    runs-on: macos-14
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Read version from tag
+        id: version
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          VERSION="${TAG#mac-}"
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Tag must look like mac-1.2.1.0 (got $TAG)" >&2
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Build app, zips and installer
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: bash Mac/packaging/build-mac.sh "$VERSION"
+
+      - name: Create pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          cat > notes.md <<EOF
+          Mac beta of Stream Deck Icon Manager $VERSION. **Windows users:** this release is for Mac only; your app won't offer it.
+
+          ### Install
+          1. Download **StreamDeckIconManager${VERSION}MacSetup.pkg** below and open it. It works on Apple silicon and Intel Macs.
+          2. macOS says it can't verify the developer (the app isn't notarized by Apple yet). Click **Done**, then open **System Settings > Privacy & Security**, scroll down and click **Open Anyway** next to the installer's name. (On macOS 14 and earlier you can instead Control-click the file and choose **Open**.)
+          3. Follow the installer. The app goes in your Applications folder.
+
+          After that, the app updates itself: use **Check for updates** in the app.
+
+          The \`Mac-arm64.zip\` / \`Mac-x64.zip\` files are what the in-app updater downloads; you don't need them.
+
+          Needs macOS 12 or later and the Elgato Stream Deck app. Export any packs you care about before testing a beta.
+          EOF
+          gh release create "$TAG" artifacts/mac/*.pkg artifacts/mac/*.zip \
+            --prerelease --latest=false \
+            --title "Mac beta $VERSION" \
+            --notes-file notes.md

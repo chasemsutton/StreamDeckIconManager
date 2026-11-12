@@ -22,12 +22,14 @@ internal sealed class AppUpdateService
         UpdateChannel channel = UpdateChannel.Stable,
         CancellationToken cancellationToken = default)
     {
-        var release = channel == UpdateChannel.Beta
-            ? await GetNewestReleaseAsync(cancellationToken).ConfigureAwait(false)
-            : await GetJsonAsync<GitHubRelease>(ReleaseNaming.LatestReleaseApiUri, cancellationToken).ConfigureAwait(false);
-
-        if (release is null || string.IsNullOrWhiteSpace(release.TagName))
+        var releases = await GetJsonAsync<List<GitHubRelease>>(ReleaseNaming.ReleasesApiUri, cancellationToken).ConfigureAwait(false);
+        if (releases is null)
             return UpdateCheckResult.Failed("Could not read release information from GitHub.");
+
+        // Releases for other platforms (Mac-only betas) have no Windows setup and are skipped.
+        var release = NewestWindowsRelease(releases, includePrereleases: channel == UpdateChannel.Beta);
+        if (release is null)
+            return UpdateCheckResult.UpToDate(CurrentVersion);
 
         if (!TryParseVersion(release.TagName, out var latestVersion))
             return UpdateCheckResult.Failed($"Unrecognized release version: {release.TagName}");
@@ -45,18 +47,20 @@ internal sealed class AppUpdateService
         return UpdateCheckResult.Available(latestVersion, release.TagName, asset.Name, asset.BrowserDownloadUrl, release.HtmlUrl, release.Prerelease);
     }
 
-    /// <summary>Highest-versioned published release, pre-releases included. Drafts are skipped.</summary>
-    private static async Task<GitHubRelease?> GetNewestReleaseAsync(CancellationToken cancellationToken)
-    {
-        var releases = await GetJsonAsync<List<GitHubRelease>>(ReleaseNaming.ReleasesApiUri, cancellationToken).ConfigureAwait(false);
-        return releases?
-            .Where(r => !r.Draft)
+    /// <summary>
+    /// Highest-versioned published release that has a Windows setup, optionally including
+    /// pre-releases. Drafts, and releases for other platforms (such as "mac-" tagged ones), are skipped.
+    /// </summary>
+    private static GitHubRelease? NewestWindowsRelease(IEnumerable<GitHubRelease> releases, bool includePrereleases) =>
+        releases
+            .Where(r => !r.Draft && (includePrereleases || !r.Prerelease))
+            .Where(r => !r.TagName.StartsWith(ReleaseNaming.MacTagPrefix, StringComparison.OrdinalIgnoreCase))
+            .Where(r => r.Assets.Any(a => ReleaseNaming.IsSetupAssetName(a.Name)))
             .Select(r => (Release: r, Ok: TryParseVersion(r.TagName, out var v), Version: v))
             .Where(x => x.Ok)
             .OrderByDescending(x => x.Version)
             .Select(x => x.Release)
             .FirstOrDefault();
-    }
 
     private static async Task<T?> GetJsonAsync<T>(Uri uri, CancellationToken cancellationToken)
     {

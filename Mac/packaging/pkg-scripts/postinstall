@@ -1,0 +1,39 @@
+#!/bin/bash
+# Runs as root after the installer copies both apps into the staging folder. Moves the one for
+# this Mac's processor into /Applications, gives it to the logged-in user (so the app's built-in
+# updater can replace it later), and clears the "downloaded from the internet" flag and signs it
+# locally, so it opens without any Terminal steps.
+
+STAGE="/Library/Application Support/StreamDeckIconManager/Install"
+APP="Stream Deck Icon Manager.app"
+TARGET_VOLUME="${3:-/}"
+TARGET="${TARGET_VOLUME%/}/Applications/$APP"
+
+if [ "$(sysctl -n hw.optional.arm64 2>/dev/null)" = "1" ]; then
+  ARCH=arm64
+else
+  ARCH=x64
+fi
+
+if [ ! -d "$STAGE/$ARCH/$APP" ]; then
+  echo "postinstall: $STAGE/$ARCH/$APP is missing" >&2
+  exit 1
+fi
+
+# Quit a running copy so it isn't replaced underneath itself.
+pkill -x StreamDeckIconManager 2>/dev/null && sleep 1
+
+rm -rf "$TARGET"
+mv "$STAGE/$ARCH/$APP" "$TARGET" || exit 1
+rm -rf "$STAGE"
+rmdir "/Library/Application Support/StreamDeckIconManager" 2>/dev/null
+
+CONSOLE_USER=$(stat -f%Su /dev/console 2>/dev/null)
+if [ -n "$CONSOLE_USER" ] && [ "$CONSOLE_USER" != "root" ]; then
+  chown -R "$CONSOLE_USER":staff "$TARGET"
+fi
+
+xattr -cr "$TARGET" 2>/dev/null
+codesign --force --deep --sign - "$TARGET" 2>/dev/null
+
+exit 0

@@ -1,0 +1,27 @@
+Stream Deck Icon Manager for Mac (beta)
+=======================================
+
+This beta isn't signed by Apple yet, so macOS blocks it until you allow it once.
+
+1. Unzip, then drag "Stream Deck Icon Manager.app" into your Applications folder.
+
+2. Open Terminal (Applications > Utilities > Terminal), paste this line and press Return:
+
+   xattr -cr "/Applications/Stream Deck Icon Manager.app" && codesign --force --deep --sign - "/Applications/Stream Deck Icon Manager.app"
+
+   The first part removes the "downloaded from the internet" block; the second signs the app
+   locally on your Mac (Apple silicon Macs refuse to run unsigned apps).
+
+3. Open the app from Applications as usual.
+
+You only do this once. After that, "Check for updates" downloads and installs new versions by
+itself (the app closes and reopens). Keep the app in Applications so it can update itself.
+
+Notes
+- Make sure you downloaded the right zip: "Mac-arm64" for Apple silicon (M1, M2, M3, M4...),
+  "Mac-x64" for Intel Macs. Apple menu > About This Mac shows which you have.
+- Needs macOS 12 or later and the Elgato Stream Deck app (opened at least once).
+- The first time you use "Restart Stream Deck", macOS asks whether the app may control
+  Stream Deck. Click OK, so it can quit and reopen Stream Deck to load your packs.
+- If something goes wrong at startup, details are written to ~/Library/Logs/StreamDeckIconManager.log.
+- Back up (Export) any packs you care about before testing a beta.

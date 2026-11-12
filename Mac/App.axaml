@@ -1,0 +1,182 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="StreamDeckIconManager.Mac.App"
+             Name="Stream Deck Icon Manager"
+             RequestedThemeVariant="Dark">
+
+  <!--
+    Same design tokens as the Windows app (UI/Theme.cs there): the window is the deck's housing,
+    icons sit on black LCD "keys", and one cool-blue accent marks the action that matters.
+  -->
+  <Application.Resources>
+    <ResourceDictionary>
+      <Color x:Key="SystemAccentColor">#5B8CFF</Color>
+      <Color x:Key="SystemAccentColorLight1">#749EFF</Color>
+      <Color x:Key="SystemAccentColorLight2">#8DB0FF</Color>
+      <Color x:Key="SystemAccentColorLight3">#A6C2FF</Color>
+      <Color x:Key="SystemAccentColorDark1">#4A76E0</Color>
+      <Color x:Key="SystemAccentColorDark2">#3B62C0</Color>
+      <Color x:Key="SystemAccentColorDark3">#2E4FA0</Color>
+
+      <SolidColorBrush x:Key="TextControlBackground" Color="#232730" />
+      <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="#2B303B" />
+      <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="#232730" />
+      <SolidColorBrush x:Key="TextControlBorderBrush" Color="#2E333E" />
+      <SolidColorBrush x:Key="TextControlBorderBrushPointerOver" Color="#3D4452" />
+      <SolidColorBrush x:Key="TextControlBorderBrushFocused" Color="#5B8CFF" />
+      <SolidColorBrush x:Key="TextControlForeground" Color="#E9EBF1" />
+      <SolidColorBrush x:Key="TextControlForegroundPointerOver" Color="#E9EBF1" />
+      <SolidColorBrush x:Key="TextControlForegroundFocused" Color="#E9EBF1" />
+      <SolidColorBrush x:Key="TextControlPlaceholderForeground" Color="#676E7D" />
+      <SolidColorBrush x:Key="TextControlPlaceholderForegroundPointerOver" Color="#676E7D" />
+      <SolidColorBrush x:Key="TextControlPlaceholderForegroundFocused" Color="#676E7D" />
+      <SolidColorBrush x:Key="TextControlSelectionHighlightColor" Color="#5B8CFF" />
+
+      <SolidColorBrush x:Key="MenuFlyoutPresenterBackground" Color="#232730" />
+      <SolidColorBrush x:Key="MenuFlyoutPresenterBorderBrush" Color="#3D4452" />
+      <SolidColorBrush x:Key="ToolTipBackground" Color="#23272F" />
+      <SolidColorBrush x:Key="ToolTipBorderBrush" Color="#3D4452" />
+      <SolidColorBrush x:Key="ToolTipForeground" Color="#E9EBF1" />
+    </ResourceDictionary>
+  </Application.Resources>
+
+  <Application.Styles>
+    <FluentTheme />
+
+    <Style Selector="Window">
+      <Setter Property="FontSize" Value="13" />
+      <Setter Property="Foreground" Value="#E9EBF1" />
+      <Setter Property="Background" Value="#15171C" />
+    </Style>
+
+    <!-- Buttons: classes primary, secondary, ghost, danger (ThemedButton sets them). -->
+    <Style Selector="Button.sd">
+      <Setter Property="CornerRadius" Value="7" />
+      <Setter Property="Padding" Value="13,7" />
+      <Setter Property="MinHeight" Value="32" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="Button.sd:disabled">
+      <Setter Property="Opacity" Value="0.45" />
+    </Style>
+
+    <Style Selector="Button.primary">
+      <Setter Property="Background" Value="#5B8CFF" />
+      <Setter Property="BorderBrush" Value="#5B8CFF" />
+      <Setter Property="Foreground" Value="White" />
+    </Style>
+    <Style Selector="Button.primary:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="#749EFF" />
+      <Setter Property="BorderBrush" Value="#749EFF" />
+      <Setter Property="Foreground" Value="White" />
+    </Style>
+    <Style Selector="Button.primary:pressed /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="#4A76E0" />
+      <Setter Property="BorderBrush" Value="#4A76E0" />
+      <Setter Property="Foreground" Value="White" />
+    </Style>
+    <Style Selector="Button.primary:disabled /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="#5B8CFF" />
+      <Setter Property="BorderBrush" Value="#5B8CFF" />
+      <Setter Property="Foreground" Value="White" />
+    </Style>
+
+    <Style Selector="Button.secondary">
+      <Setter Property="Background" Value="#23272F" />
+      <Setter Property="BorderBrush" Value="#2E333E" />
+      <Setter Property="Foreground" Value="#E9EBF1" />
+    </Style>
+    <Style Selector="Button.secondary:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="#2B303B" />
+      <Setter Property="BorderBrush" Value="#3D4452" />
+      <Setter Property="Foreground" Value="#E9EBF1" />
+    </Style>
+    <Style Selector="Button.secondary:pressed /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="#2E333E" />
+      <Setter Property="BorderBrush" Value="#3D4452" />
+      <Setter Property="Foreground" Value="#E9EBF1" />
+    </Style>
+    <Style Selector="Button.secondary:disabled /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="#23272F" />
+      <Setter Property="BorderBrush" Value="#2E333E" />
+      <Setter Property="Foreground" Value="#E9EBF1" />
+    </Style>
+
+    <Style Selector="Button.ghost">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="Foreground" Value="#989FAE" />
+    </Style>
+    <Style Selector="Button.ghost:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="#23272F" />
+      <Setter Property="BorderBrush" Value="#23272F" />
+      <Setter Property="Foreground" Value="#E9EBF1" />
+    </Style>
+    <Style Selector="Button.ghost:pressed /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="#2E333E" />
+      <Setter Property="BorderBrush" Value="#2E333E" />
+      <Setter Property="Foreground" Value="#E9EBF1" />
+    </Style>
+    <Style Selector="Button.ghost:disabled /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="Foreground" Value="#989FAE" />
+    </Style>
+    <Style Selector="Button.ghost.warning">
+      <Setter Property="Foreground" Value="#E8B04B" />
+    </Style>
+
+    <Style Selector="Button.danger">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="Foreground" Value="#F06B6B" />
+    </Style>
+    <Style Selector="Button.danger:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="#3A2226" />
+      <Setter Property="BorderBrush" Value="#3A2226" />
+      <Setter Property="Foreground" Value="#F06B6B" />
+    </Style>
+    <Style Selector="Button.danger:pressed /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="#47282C" />
+      <Setter Property="BorderBrush" Value="#47282C" />
+      <Setter Property="Foreground" Value="#F06B6B" />
+    </Style>
+    <Style Selector="Button.danger:disabled /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="Foreground" Value="#F06B6B" />
+    </Style>
+
+    <Style Selector="Button.small">
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="FontWeight" Value="Normal" />
+      <Setter Property="MinHeight" Value="26" />
+      <Setter Property="Padding" Value="9,4" />
+    </Style>
+
+    <Style Selector="TextBox">
+      <Setter Property="CornerRadius" Value="6" />
+      <Setter Property="Padding" Value="10,7" />
+      <Setter Property="MinHeight" Value="34" />
+    </Style>
+    <Style Selector="TextBox.error /template/ Border#PART_BorderElement">
+      <Setter Property="BorderBrush" Value="#F06B6B" />
+    </Style>
+
+    <Style Selector="ProgressBar">
+      <Setter Property="Foreground" Value="#5B8CFF" />
+      <Setter Property="Background" Value="#23272F" />
+      <Setter Property="MinHeight" Value="6" />
+      <Setter Property="Height" Value="6" />
+      <Setter Property="CornerRadius" Value="3" />
+    </Style>
+
+    <Style Selector="MenuItem.danger">
+      <Setter Property="Foreground" Value="#F06B6B" />
+    </Style>
+  </Application.Styles>
+</Application>

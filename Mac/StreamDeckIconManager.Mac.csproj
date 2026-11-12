@@ -1,0 +1,50 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Mac version of Stream Deck Icon Manager (beta). Avalonia UI on .NET 8; the pack and image
+    logic mirrors the Windows app in "Add Stream Deck Icon". Build the .app with publish-mac.ps1.
+    Also runs on Windows for quick UI checks (set SDIM_ICONPACKS_ROOT to a test folder).
+  -->
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>StreamDeckIconManager</AssemblyName>
+    <RootNamespace>StreamDeckIconManager.Mac</RootNamespace>
+    <BuiltInComInteropSupport>false</BuiltInComInteropSupport>
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="11.3.23" />
+    <PackageReference Include="Avalonia.Desktop" Version="11.3.23" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.23" />
+    <PackageReference Include="SkiaSharp" Version="2.88.9" />
+    <PackageReference Include="Svg.Skia" Version="3.0.6" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\shared\ReleaseNaming.cs" Link="Core\ReleaseNaming.cs" />
+    <EmbeddedResource Include="..\Add Stream Deck Icon\Resources\imgIcon1.png" LogicalName="DefaultEmblem.png" />
+    <EmbeddedResource Include="..\Add Stream Deck Icon\StreamDeckIconManagerLogo.ico" LogicalName="AppIcon.ico" />
+  </ItemGroup>
+
+  <!-- Google's gif2webp/img2webp for the target Mac (see tools\gif2webp\README.md). -->
+  <PropertyGroup>
+    <WebpToolsRid Condition="'$(RuntimeIdentifier)' == 'osx-arm64'">osx-arm64</WebpToolsRid>
+    <WebpToolsRid Condition="'$(RuntimeIdentifier)' == 'osx-x64'">osx-x64</WebpToolsRid>
+    <WebpToolsRid Condition="'$(WebpToolsRid)' == '' and $([MSBuild]::IsOSPlatform('OSX'))">osx-arm64</WebpToolsRid>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(WebpToolsRid)' != ''">
+    <None Include="tools\gif2webp\$(WebpToolsRid)\*" Link="tools\gif2webp\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="tools\gif2webp\*.txt;tools\gif2webp\README.md" Link="tools\gif2webp\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+  <!-- Running on Windows for a quick check: use the Windows copies so GIF conversion still works. -->
+  <ItemGroup Condition="'$(WebpToolsRid)' == '' and $([MSBuild]::IsOSPlatform('Windows'))">
+    <None Include="..\Add Stream Deck Icon\tools\gif2webp\*.exe" Link="tools\gif2webp\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>
